@@ -70,7 +70,7 @@ router.post('/bot-config/:groupID/channel', async (req, res) => {
 router.post('/bot-config/:groupID', async (req, res) => {
   try {
     const { groupID } = req.params;
-    const { token, guildId, channelId, channels } = req.body;
+    const { token, guildId, channelId, pollChannelId, channels } = req.body;
     
     const encryptedToken = encrypt(token || '');
     
@@ -86,6 +86,7 @@ router.post('/bot-config/:groupID', async (req, res) => {
       token: encryptedToken, 
       guildId, 
       channelId,
+      pollChannelId: pollChannelId || '',
       channels: channels || []
     };
     

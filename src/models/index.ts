@@ -102,6 +102,10 @@ export type DiscordChannel = {
 export type DiscordConfig = {
   token: string;
   guildId: string;
+  /** Kênh VOICE — nguồn danh sách thành viên (ai đang ngồi trong đó). */
   channelId: string;
+  /** Kênh CHỮ để đăng poll. Không đặt thì rơi về channelId, và poll sẽ nằm trong khung
+   *  chat của kênh voice — đúng về kỹ thuật nhưng không ai vào đó xem. */
+  pollChannelId?: string;
   channels?: DiscordChannel[];
 };

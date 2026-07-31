@@ -13,6 +13,7 @@ export const DiscordConfigModal: React.FC<DiscordConfigModalProps> = ({ onClose,
     token: '',
     guildId: '',
     channelId: '',
+    pollChannelId: '',
     channels: []
   });
   const [newChannelName, setNewChannelName] = useState('');
@@ -140,7 +141,25 @@ export const DiscordConfigModal: React.FC<DiscordConfigModalProps> = ({ onClose,
                   <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
                 ))}
               </select>
-              <p className="text-[10px] text-[#949BA4]">Kênh này sẽ được sử dụng để theo dõi trạng thái voice và gửi thông báo.</p>
+              <p className="text-[10px] text-[#949BA4]">Phải là kênh <b>VOICE</b>. Danh sách thành viên lấy từ những người đang ngồi trong kênh này.</p>
+            </div>
+
+            {/* Poll phải đăng vào kênh CHỮ. Trước đây dùng chung `channelId` với kênh voice
+                nên poll chui vào khung chat của kênh voice: báo tạo thành công mà không ai
+                thấy, vì chẳng ai mở chat trong kênh voice ra xem. */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#949BA4]">Kênh đăng Poll / thông báo</label>
+              <select
+                value={config.pollChannelId || ''}
+                onChange={e => setConfig({ ...config, pollChannelId: e.target.value })}
+                className="w-full rounded bg-[#1E1F22] border border-[#3F4147] p-2.5 text-sm text-[#DBDEE1] focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
+              >
+                <option value="">-- Dùng chung kênh mặc định --</option>
+                {(config.channels || []).map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-[#949BA4]">Nên chọn kênh <b>CHỮ</b>. Để trống thì poll đăng vào kênh mặc định ở trên, tức khung chat của kênh voice, rất dễ không ai thấy.</p>
             </div>
           </div>
 

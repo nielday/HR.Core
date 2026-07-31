@@ -15,7 +15,10 @@ router.post('/poll/:groupID', async (req, res) => {
     
     const localData = loadDb();
     const data = localData.groups[groupID]?.configs?.discord || {};
-    const channelId = bodyChannelId || data.channelId;
+    // Ưu tiên kênh CHỮ dành riêng cho poll. Trước đây rơi thẳng về data.channelId, mà đó là
+    // kênh VOICE (tool bắt buộc voice để lấy danh sách thành viên) -> poll chui vào khung
+    // chat của kênh voice, báo thành công mà không ai thấy.
+    const channelId = bodyChannelId || data.pollChannelId || data.channelId;
     const channel = await client.channels.fetch(channelId);
     
     if (!channel || !channel.isTextBased()) {
@@ -241,7 +244,10 @@ router.post('/discord/message/:groupID', async (req, res) => {
   try {
     const localData = loadDb();
     const data = localData.groups[groupID]?.configs?.discord || {};
-    const channelId = bodyChannelId || data.channelId;
+    // Ưu tiên kênh CHỮ dành riêng cho poll. Trước đây rơi thẳng về data.channelId, mà đó là
+    // kênh VOICE (tool bắt buộc voice để lấy danh sách thành viên) -> poll chui vào khung
+    // chat của kênh voice, báo thành công mà không ai thấy.
+    const channelId = bodyChannelId || data.pollChannelId || data.channelId;
     const channel = await client.channels.fetch(channelId);
     
     if (!channel || !channel.isTextBased()) {
