@@ -10,6 +10,11 @@ import { Tooltip } from './Tooltip';
 import { normalizeDiscordName } from '../utils';
 import { ToastType } from './Toast';
 
+// Tra lại theo id để lấy ĐỊNH NGHĨA HIỆN TẠI (tên, icon). Object lưu trong DB chỉ là ảnh
+// chụp cũ, đổi icon hay đổi tên vũ khí là nó lệch.
+const timVK = (id?: string) => (id ? Object.values(WEAPONS).find((w) => w.id === id) : undefined);
+const timRank = (id?: string) => (id ? Object.values(RANKS).find((r) => r.id === id) : undefined);
+
 const CustomWeaponSelect = ({ value, onChange, label }: { value: Weapon, onChange: (w: Weapon) => void, label?: string }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -115,10 +120,16 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
             avatar: data.avatar,
             role: data.role || 'flex',
             position: data.position || 'flex',
-            rank: Object.values(RANKS).find(r => r.id === data.rankId) || RANKS.RECRUIT,
-            primaryWeapon1: Object.values(WEAPONS).find(w => w.id === data.primaryWeapon1Id) || WEAPONS.NONE,
-            primaryWeapon2: Object.values(WEAPONS).find(w => w.id === data.primaryWeapon2Id) || WEAPONS.NONE,
-            secondaryWeapons: (data.secondaryWeaponIds || []).map((id: string) => Object.values(WEAPONS).find(w => w.id === id)).filter(Boolean),
+            // Bản ghi lưu vũ khí và cấp bậc ở HAI DẠNG: nút thêm thành viên lưu nguyên
+            // object, thẻ thành viên bấm Lưu mới ghi thêm dạng id rời. Đọc mỗi dạng id rời
+            // là người thêm bằng đường kia mở ra thấy trống trơn.
+            rank: timRank(data.rankId) || timRank(data.rank?.id) || data.rank || RANKS.RECRUIT,
+            primaryWeapon1: timVK(data.primaryWeapon1Id) || timVK(data.primaryWeapon1?.id) || data.primaryWeapon1 || WEAPONS.NONE,
+            primaryWeapon2: timVK(data.primaryWeapon2Id) || timVK(data.primaryWeapon2?.id) || data.primaryWeapon2 || WEAPONS.NONE,
+            secondaryWeapons: (data.secondaryWeaponIds?.length
+              ? data.secondaryWeaponIds
+              : (data.secondaryWeapons || []).map((w: any) => w?.id)
+            ).filter(Boolean).map((id: string) => timVK(id)).filter(Boolean),
             note: data.note || '',
             ingameName: data.ingameName || '',
             ingameId: data.ingameId || '',

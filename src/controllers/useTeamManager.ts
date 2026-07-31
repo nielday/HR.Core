@@ -1109,10 +1109,26 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         const config = khop?.config || {};
         const memberId = khop?.id || dm.id;
         
-        const primaryWeapon1 = dm.primaryWeapon1 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon1Id) || WEAPONS.NONE;
-        const primaryWeapon2 = dm.primaryWeapon2 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon2Id) || WEAPONS.NONE;
-        const secondaryWeapons = dm.secondaryWeapons || (config.secondaryWeaponIds || []).map((id: string) => Object.values(WEAPONS).find(w => w.id === id)).filter(Boolean);
-        const rank = dm.rank || Object.values(RANKS).find(r => r.id === config.rankId) || Object.values(RANKS)[0];
+        // Bản ghi lưu vũ khí và cấp bậc ở HAI DẠNG tuỳ đường nào tạo ra nó: nút "Thêm thành
+        // viên" lưu nguyên object (primaryWeapon1.id), còn thẻ thành viên bấm Lưu mới ghi
+        // thêm dạng id rời (primaryWeapon1Id). Bản cũ chỉ đọc dạng id rời nên người thêm
+        // bằng nút kia mở ra thấy trống vũ khí và cấp bậc Tân Binh, tưởng mất dữ liệu.
+        // Luôn tra lại theo id để lấy ĐỊNH NGHĨA HIỆN TẠI (tên, icon), object lưu trong DB
+        // chỉ là ảnh chụp cũ; tra không ra mới dùng tạm object đó.
+        const timVK = (id?: string) => (id ? Object.values(WEAPONS).find((w) => w.id === id) : undefined);
+        const timRank = (id?: string) => (id ? Object.values(RANKS).find((r) => r.id === id) : undefined);
+
+        const primaryWeapon1 = dm.primaryWeapon1
+          || timVK(config.primaryWeapon1Id) || timVK(config.primaryWeapon1?.id) || config.primaryWeapon1 || WEAPONS.NONE;
+        const primaryWeapon2 = dm.primaryWeapon2
+          || timVK(config.primaryWeapon2Id) || timVK(config.primaryWeapon2?.id) || config.primaryWeapon2 || WEAPONS.NONE;
+        const idPhu: string[] = (config.secondaryWeaponIds?.length
+          ? config.secondaryWeaponIds
+          : (config.secondaryWeapons || []).map((w: any) => w?.id)).filter(Boolean);
+        const secondaryWeapons = dm.secondaryWeapons
+          || idPhu.map((id: string) => timVK(id)).filter(Boolean);
+        const rank = dm.rank
+          || timRank(config.rankId) || timRank(config.rank?.id) || config.rank || Object.values(RANKS)[0];
 
         let participationStatus = dm.participationStatus || 'confirmed';
         if (source === 'poll' && pollResults) {

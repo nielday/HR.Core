@@ -4,6 +4,28 @@ import { loadDb, saveDb } from './localDb';
 
 const router = express.Router();
 
+/**
+ * Ghi vũ khí và cấp bậc ở CẢ HAI DẠNG.
+ *
+ * Bản ghi trong DB tồn tại hai dạng tuỳ đường nào tạo ra nó: nút "Thêm thành viên" gửi
+ * nguyên object (primaryWeapon1.id), còn thẻ thành viên bấm Lưu thì ghi dạng id rời
+ * (primaryWeapon1Id). Chỗ đọc lại chỉ tra dạng id rời, nên người thêm bằng nút kia mở thẻ
+ * ra thấy trống vũ khí và cấp bậc Tân Binh, tưởng mất dữ liệu.
+ * Phía đọc đã sửa để chấp cả hai, nhưng vẫn phải chuẩn hoá lúc ghi, không thì bản ghi lệch
+ * cứ đẻ tiếp và lần sau lại có người mất công dò.
+ */
+function chuanHoaVuKhi(m: any) {
+  if (!m || typeof m !== 'object') return m;
+  const phu = (m.secondaryWeaponIds?.length ? m.secondaryWeaponIds : (m.secondaryWeapons || []).map((w: any) => w?.id));
+  return {
+    ...m,
+    primaryWeapon1Id: m.primaryWeapon1Id || m.primaryWeapon1?.id || '',
+    primaryWeapon2Id: m.primaryWeapon2Id || m.primaryWeapon2?.id || '',
+    secondaryWeaponIds: (phu || []).filter(Boolean),
+    rankId: m.rankId || m.rank?.id || '',
+  };
+}
+
 router.get('/discord-user/:groupID', async (req, res) => {
   const { groupID } = req.params;
   const { name } = req.query;
@@ -88,8 +110,8 @@ router.get('/discord-user/:groupID', async (req, res) => {
 router.post('/custom-members/:groupID', async (req, res) => {
   try {
     const { groupID } = req.params;
-    const newMember = req.body;
-    
+    const newMember = chuanHoaVuKhi(req.body);
+
     const localData = loadDb();
     if (!localData.members[newMember.id]) {
       localData.members[newMember.id] = { id: newMember.id, name: '' };
@@ -124,7 +146,8 @@ router.post('/custom-members/:groupID/batch', async (req, res) => {
     const localData = loadDb();
     const newMemberIds: string[] = [];
     
-    newMembers.forEach(member => {
+    newMembers.forEach(raw => {
+      const member = chuanHoaVuKhi(raw);
       if (!localData.members[member.id]) {
         localData.members[member.id] = { id: member.id, name: '' };
       }

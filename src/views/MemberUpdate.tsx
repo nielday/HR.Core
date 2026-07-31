@@ -8,6 +8,11 @@ import { RANKS, WEAPONS, ROLE_OPTIONS, POSITION_OPTIONS } from '../constants';
 import { WeaponIcon } from './WeaponIcon';
 import { Toast, ToastType } from './Toast';
 
+// Tra lại theo id để lấy ĐỊNH NGHĨA HIỆN TẠI (tên, icon). Object lưu trong DB chỉ là ảnh
+// chụp cũ, đổi icon hay đổi tên vũ khí là nó lệch.
+const timVK = (id?: string) => (id ? Object.values(WEAPONS).find((w) => w.id === id) : undefined);
+const timRank = (id?: string) => (id ? Object.values(RANKS).find((r) => r.id === id) : undefined);
+
 const CustomWeaponSelect = ({ value, onChange, label }: { value: Weapon, onChange: (w: Weapon) => void, label?: string }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -110,10 +115,15 @@ export const MemberUpdate: React.FC = () => {
             const mappedConfig: Partial<Member> = {
               role: configData.role || 'flex',
               position: configData.position || 'flex',
-              primaryWeapon1: Object.values(WEAPONS).find(w => w.id === configData.primaryWeapon1Id) || WEAPONS.NONE,
-              primaryWeapon2: Object.values(WEAPONS).find(w => w.id === configData.primaryWeapon2Id) || WEAPONS.NONE,
-              secondaryWeapons: (configData.secondaryWeaponIds || []).map((id: string) => Object.values(WEAPONS).find(w => w.id === id)).filter(Boolean),
-              rank: Object.values(RANKS).find(r => r.id === configData.rankId) || RANKS.RECRUIT,
+              // Xem chú thích cùng lỗi ở useTeamManager: bản ghi lưu hai dạng, đọc mỗi dạng
+              // id rời là mất sạch vũ khí và cấp bậc của người thêm bằng đường kia.
+              primaryWeapon1: timVK(configData.primaryWeapon1Id) || timVK(configData.primaryWeapon1?.id) || configData.primaryWeapon1 || WEAPONS.NONE,
+              primaryWeapon2: timVK(configData.primaryWeapon2Id) || timVK(configData.primaryWeapon2?.id) || configData.primaryWeapon2 || WEAPONS.NONE,
+              secondaryWeapons: (configData.secondaryWeaponIds?.length
+                ? configData.secondaryWeaponIds
+                : (configData.secondaryWeapons || []).map((w: any) => w?.id)
+              ).filter(Boolean).map((id: string) => timVK(id)).filter(Boolean),
+              rank: timRank(configData.rankId) || timRank(configData.rank?.id) || configData.rank || RANKS.RECRUIT,
               note: configData.note,
               ingameName: configData.ingameName || '',
               ingameId: configData.ingameId || '',
