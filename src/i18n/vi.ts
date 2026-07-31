@@ -42,7 +42,7 @@ export const vi = {
       results: 'kết quả phù hợp',
     },
     header: {
-      title: 'VNHK',
+      title: 'CohonCave',
       subtitle: 'Quản lý đội hình',
       noChannel: 'Chưa có kênh',
       disconnect: 'Ngắt kết nối',
@@ -230,7 +230,7 @@ export const vi = {
       loadingInfo: 'Đang tải thông tin...',
       member: 'Thành viên',
       ingameInfo: 'Thông tin In-game',
-      placeholderIngameName: 'Tên In-game (VD: VNHK_Admin)',
+      placeholderIngameName: 'Tên In-game (VD: NaieI)',
       placeholderIngameId: 'ID In-game (VD: 12345678)',
       role: 'Vai trò',
       position: 'Vị trí',

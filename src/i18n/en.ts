@@ -41,7 +41,7 @@ export const en = {
       results: 'matching results',
     },
     header: {
-      title: 'VNHK',
+      title: 'CohonCave',
       subtitle: 'Team Management',
       noChannel: 'No channel',
       disconnect: 'Disconnect',
@@ -229,7 +229,7 @@ export const en = {
       loadingInfo: 'Loading information...',
       member: 'Member',
       ingameInfo: 'In-game Info',
-      placeholderIngameName: 'In-game Name (e.g., VNHK_Admin)',
+      placeholderIngameName: 'In-game Name (e.g., NaieI)',
       placeholderIngameId: 'In-game ID (e.g., 12345678)',
       role: 'Role',
       position: 'Position',
