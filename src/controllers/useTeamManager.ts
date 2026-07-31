@@ -1204,8 +1204,9 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
 
     const theoKhu = new Map<string, Member[]>();
     let boQua = 0;
+    let daTrongDoi = 0;
     for (const m of unassignedMembers) {
-      if (daXep.has(m.id)) continue;
+      if (daXep.has(m.id)) { daTrongDoi++; continue; }
       const areaId = m.voiceChannelId ? gan[m.voiceChannelId] : undefined;
       if (!areaId) { boQua++; continue; }
       if (!theoKhu.has(areaId)) theoKhu.set(areaId, []);
@@ -1243,7 +1244,11 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       })));
     }
 
-    return { daThem, boQua, soKhu: theoKhu.size };
+    // Trả đủ số liệu để chỗ gọi phân biệt được BA lý do "không xếp được ai", vì mỗi lý do
+    // cần một cách sửa khác nhau: danh sách rỗng (chưa ai vào voice), ai cũng đã đứng trong
+    // đội rồi, hay có người nhưng ngồi ở kênh chưa gán khu. Gộp chung một câu là người dùng
+    // đi sửa nhầm chỗ.
+    return { daThem, boQua, soKhu: theoKhu.size, tongCho: unassignedMembers.length, daTrongDoi };
   };
   
   const handleDeleteCustomMember = async (memberId: string) => {

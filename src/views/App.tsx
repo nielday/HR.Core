@@ -389,7 +389,12 @@ export default function App() {
     if (!soGan) return showToast(t('sidebar.voice.needMap'), 'error');
     const kq = teamManager.handleXepTheoVoice(voiceGan);
     if (!kq.daThem) {
-      return showToast(kq.boQua ? t('sidebar.voice.allSkipped', { n: kq.boQua }) : t('sidebar.voice.nothing'), 'info');
+      // Ba lý do khác hẳn nhau, mỗi cái sửa một kiểu. Gộp chung một câu là người dùng đi
+      // sửa nhầm chỗ: danh sách rỗng thì phải đi gọi người vào voice, chứ không phải ngồi
+      // xem lại phần gán khu.
+      if (!kq.tongCho) return showToast(t('sidebar.voice.emptyList'), 'error');
+      if (kq.daTrongDoi === kq.tongCho) return showToast(t('sidebar.voice.nothing'), 'info');
+      return showToast(t('sidebar.voice.allSkipped', { n: kq.boQua }), 'info');
     }
     // Nói luôn số người BỎ QUA. Xếp xong mà thiếu người thì phải biết ngay là thiếu ai chứ
     // không phải ngồi đếm lại từng đội.

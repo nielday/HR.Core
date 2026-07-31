@@ -157,6 +157,7 @@ export const en = {
         skipped: '{{n}} people are in unmapped channels and were left in the list.',
         allSkipped: 'Nobody placed: {{n}} people are in unmapped channels.',
         nothing: 'Nobody left to place. Everyone is already in a team.',
+        emptyList: 'The waiting list is empty, so there is nobody to place. Check whether anyone is sitting in the ticked voice channels; the number next to each channel is its headcount.',
       },
       sources: {
         discord: 'In voice channel',

@@ -158,6 +158,7 @@ export const vi = {
         skipped: '{{n}} người ở kênh chưa gán khu nên để nguyên trong danh sách.',
         allSkipped: 'Không xếp được ai: {{n}} người đang ở kênh chưa gán khu.',
         nothing: 'Không còn ai để xếp. Ai cũng đã đứng trong đội rồi.',
+        emptyList: 'Danh sách chờ đang trống nên không có ai để xếp. Kiểm tra xem có ai đang ngồi trong các kênh voice đã tick chưa, số bên phải tên kênh là số người trong đó.',
       },
       sources: {
         discord: 'Đang trong kênh voice',
