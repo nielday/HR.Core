@@ -53,19 +53,24 @@ function catVua(s: string, tran: number): string {
 const laSnowflake = (v?: string) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
 
 function dongThanhVien(m: MemberOut): string {
-  const ten = (m.ingameName || m.name || '?').trim();
   const icon = m.roleIcon ? `${m.roleIcon} ` : '• ';
   const vk = m.weapon ? ` _(${m.weapon})_` : '';
   const duBi = m.isBackup ? ' `dự bị`' : '';
-  // Gắn link hồ sơ Discord vào tên: chữ vẫn là tên trong game, bấm vào mở tài khoản.
-  // Link kiểu [chữ](url) CHỈ chạy TRONG EMBED, tin chữ thường Discord không nhận. Một lý do
-  // nữa để không quay lại bản chữ thường.
+
+  // DÙNG MENTION, KHÔNG DÙNG LINK [chữ](discord.com/users/id).
+  // Link giữ được tên trong game nhưng bấm vào là ĐIỀU HƯỚNG sang trang hồ sơ. Mention mới
+  // bung đúng cái thẻ hồ sơ nổi lên giữa màn hình, đó mới là thứ cần: đang xếp trận, bấm
+  // phát xem ai rồi nhắn luôn, không phải nhảy ra trang khác.
+  // Trong embed mention KHÔNG hú ai cả, nên không sợ réo nhầm giữa đêm.
   // Chỉ gắn khi id đúng dạng snowflake: người thêm tay lúc bot chưa kết nối mang id
-  // 'custom_<thời điểm>', trỏ link vào đó là ra trang lỗi.
-  // Ngoặc vuông trong tên phá cú pháp link nên phải thoát.
-  const chu = laSnowflake(m.discordId)
-    ? `[${ten.replace(/[[\]]/g, '\\$&')}](https://discord.com/users/${(m.discordId as string).trim()})`
-    : ten;
+  // 'custom_<thời điểm>', gắn vào là hiện ra chuỗi rác.
+  const tenGame = (m.ingameName || '').trim();
+  const tenDis = (m.name || '').trim();
+  if (!laSnowflake(m.discordId)) return `${icon}${tenGame || tenDis || '?'}${vk}${duBi}`;
+
+  const chip = `<@${(m.discordId as string).trim()}>`;
+  // Tên trong game trùng tên Discord thì chỉ hiện một, đừng lặp "Naiel · @Naiel".
+  const chu = tenGame && tenGame.toLowerCase() !== tenDis.toLowerCase() ? `${tenGame} · ${chip}` : chip;
   return `${icon}${chu}${vk}${duBi}`;
 }
 
