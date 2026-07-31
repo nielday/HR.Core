@@ -50,6 +50,44 @@ router.get('/voice-channels/:groupID', async (req, res) => {
   }
 });
 
+// =====================================================================
+// AI ĐANG Ở KÊNH VOICE NÀO, CHO CẢ SERVER.
+//
+// Dùng để ĐIỂM DANH: đội hình đã xếp sẵn 15 công 15 thủ, đến giờ đánh nhìn phát biết ai đã
+// vào đúng kênh, ai lạc sang kênh khác, ai chưa vào.
+//
+// Đọc thẳng guild.voiceStates.cache, KHÔNG gọi API Discord lần nào. Discord đẩy sẵn trạng
+// thái voice vào bộ nhớ bot qua intent GuildVoiceStates và cập nhật theo sự kiện, nên gọi
+// mấy giây một lần cũng không tốn gì. Đây là lý do không đụng tới guild.members.fetch(),
+// thứ từng làm rate limit opcode 8 và thổi bay avatar cả danh sách.
+// =====================================================================
+router.get('/voice-state/:groupID', async (req, res) => {
+  try {
+    const { groupID } = req.params;
+    const client = await getDiscordClient(groupID);
+    if (!client || !client.isReady()) return res.json({ states: {}, error: 'Bot chưa kết nối' });
+
+    const guildId = loadDb().groups[groupID]?.configs?.discord?.guildId;
+    if (!guildId) return res.json({ states: {}, error: 'Chưa có Guild ID' });
+
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return res.json({ states: {}, error: 'Bot không có trong server' });
+
+    const states: Record<string, { id: string; name: string }> = {};
+    for (const vs of guild.voiceStates.cache.values()) {
+      if (!vs.channelId || !vs.id) continue;
+      const ch: any = guild.channels.cache.get(vs.channelId);
+      if (ch?.members && ch.members.get(vs.id)?.user?.bot) continue;
+      states[vs.id] = { id: vs.channelId, name: ch?.name || '' };
+    }
+
+    res.json({ states });
+  } catch (error: any) {
+    console.error('[voice-state] Lỗi:', error);
+    res.json({ states: {}, error: error.message });
+  }
+});
+
 router.get('/members/:groupID', async (req, res) => {
   const { groupID } = req.params;
   

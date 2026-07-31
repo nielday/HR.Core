@@ -21,6 +21,9 @@ interface MemberCardProps {
   isDimmed?: boolean;
   isHighlighted?: boolean;
   assignedTeamInfo?: { teamName: string; areaName: string };
+  /** Điểm danh voice. Không truyền thì thẻ giữ nguyên màu theo vai trò như cũ. */
+  voiceTrangThai?: 'dung' | 'lac' | 'vang' | 'khongro';
+  voiceTenKenh?: string;
   memberSource?: 'discord' | 'custom';
   onDeleteCustomMember?: (id: string) => void;
   readOnly?: boolean;
@@ -45,6 +48,8 @@ export const MemberCard: React.FC<MemberCardProps> = ({
   isHighlighted = false,
   assignedTeamInfo,
   memberSource,
+  voiceTrangThai,
+  voiceTenKenh,
   onDeleteCustomMember,
   readOnly = false,
   disableMenu = false
@@ -139,9 +144,21 @@ export const MemberCard: React.FC<MemberCardProps> = ({
   const borderWidth = isBackup ? '2px' : (isSelected ? '2px' : '1.5px');
   const borderStyle = isBackup ? 'dashed' : 'solid';
 
+  // ĐIỂM DANH VOICE ĐÈ LÊN MÀU VAI TRÒ.
+  // Đến giờ đánh thì câu hỏi duy nhất là "ai chưa vào đúng chỗ", không phải "ai là heal".
+  // Vai trò vẫn đọc được qua icon và khung rank, nên đổi nền là đánh đổi đúng.
+  // 'dung' KHÔNG đổi gì: thẻ đúng chỗ phải trông y như thường, có vậy màu lạ mới đập vào mắt.
+  // 'khongro' cũng không đổi: không tra được thì im lặng, tô đỏ là vu oan cho người đang
+  // ngồi sẵn trong voice mà chỉ vì thiếu Discord ID.
+  const mauDiemDanh = voiceTrangThai === 'vang' ? { nen: 'rgba(237,66,69,0.35)', vien: '#ED4245' }
+    : voiceTrangThai === 'lac' ? { nen: 'rgba(250,166,26,0.35)', vien: '#FAA61A' }
+    : null;
+
   const bgStyle = isOffline
     ? { backgroundImage: `repeating-linear-gradient(45deg, rgba(0,0,0,0.4), rgba(0,0,0,0.4) 4px, ${bgColor} 4px, ${bgColor} 8px)`, borderColor, borderWidth, borderStyle }
-    : { backgroundColor: bgColor, borderColor, borderWidth, borderStyle };
+    : mauDiemDanh
+      ? { backgroundColor: mauDiemDanh.nen, borderColor: mauDiemDanh.vien, borderWidth: '2px', borderStyle: 'solid' }
+      : { backgroundColor: bgColor, borderColor, borderWidth, borderStyle };
 
   const dimClass = isDimmed ? 'opacity-20 grayscale blur-[1px]' : '';
   const highlightClass = isHighlighted ? 'ring-2 ring-[#5865F2] ring-offset-1 ring-offset-[#313338] shadow-[0_0_25px_rgba(88,101,242,0.5)] scale-[1.01] z-10' : '';
@@ -259,6 +276,23 @@ export const MemberCard: React.FC<MemberCardProps> = ({
               phân biệt được ai bên công ai bên thủ, không thì gộp xong lại rối hơn.
               Chỉ hiện ở danh sách chờ và khi người này chưa được xếp vào đội nào, để không
               chen với nhãn đội vốn quan trọng hơn. */}
+          {/* Nhãn điểm danh. Màu nền đã hét lên rồi, nhãn này trả lời câu tiếp theo: lạc thì
+              lạc sang ĐÂU. Biết họ đang ở "Hoàng đế" thì gọi một câu là xong, còn chỉ biết
+              "sai chỗ" thì phải đi dò từng kênh. */}
+          {voiceTrangThai === 'vang' && (
+            <div className="flex shrink-0 items-center rounded bg-[#ED4245]/25 px-1.5 py-1 text-[10px] font-bold text-[#ff9b9d] border border-[#ED4245]/40 mr-1"
+                 title="Không ở kênh voice nào">
+              vắng
+            </div>
+          )}
+          {voiceTrangThai === 'lac' && (
+            <div className="flex min-w-0 shrink items-center gap-1 rounded bg-[#FAA61A]/25 px-1.5 py-1 text-[10px] font-bold text-[#ffcf7a] border border-[#FAA61A]/40 mr-1"
+                 title={`Đang ở kênh voice khác: ${voiceTenKenh || '?'}`}>
+              <span className="shrink-0">🔊</span>
+              <span className="block truncate">{voiceTenKenh || 'kênh khác'}</span>
+            </div>
+          )}
+
           {/* Người ngồi trong voice nhưng không có trong danh sách bang. Phải nhìn ra ngay,
               không thì xếp nhầm khách vào đội mà không ai biết. */}
           {member.laKhach && (

@@ -374,6 +374,33 @@ export default function App() {
     setChiThanhVien(vn.chiThanhVien !== false);
   }, [discordConfig]);
 
+  // ĐIỂM DANH: ai đang ở kênh voice nào, cho cả server.
+  // Đọc từ bộ nhớ bot chứ không gọi API Discord, nên hỏi 15 giây một lần cũng không tốn gì.
+  // Chỉ chạy khi bot đang kết nối, và dừng hẳn khi rớt để không đập vào một endpoint chắc
+  // chắn trả rỗng.
+  const [voiceState, setVoiceState] = useState<Record<string, { id: string; name: string }>>({});
+
+  useEffect(() => {
+    if (!isConnected || !userGroup) return;
+    let song = true;
+    const nap = async () => {
+      try {
+        const res = await fetch(`/api/voice-state/${userGroup}`);
+        const kq = await res.json();
+        if (song) setVoiceState(kq.states || {});
+      } catch { /* mất mạng một nhịp thì giữ số cũ, đừng xoá trắng bảng điểm danh */ }
+    };
+    nap();
+    const id = setInterval(nap, 15000);
+    return () => { song = false; clearInterval(id); };
+  }, [isConnected, userGroup]);
+
+  // Tên kênh để hiện "đang ở kênh nào" và để đoán khu khi chưa gán.
+  const tenKenhVoice = useMemo(
+    () => Object.fromEntries(voiceChannels.map((c) => [c.id, c.name])),
+    [voiceChannels],
+  );
+
   const napKenhVoice = async () => {
     if (!userGroup) return;
     try {
@@ -864,8 +891,11 @@ export default function App() {
               setWeaponSlotFilter={filters.setWeaponSlotFilter}
             />
 
-            <AreaGrid 
+            <AreaGrid
               areas={areas}
+              voiceState={voiceState}
+              voiceGan={voiceGan}
+              tenKenhVoice={tenKenhVoice}
               isSearchActive={isSearchActive}
               isGlobalFilterActive={isGlobalFilterActive}
               isMemberMatching={isMemberMatching}

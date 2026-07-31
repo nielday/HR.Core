@@ -135,6 +135,8 @@ export const areaHasOfflineMembers = (teams: Team[]) => {
   return teams.some(team => hasOfflineMembers(team.members));
 };
 
+export * from './diemDanhVoice';
+
 export const isTowerArea = (name: string) => name.toLowerCase().includes('trụ') || name.toLowerCase().includes('tower');
 export const isPVPArea = (name: string) => name.toLowerCase().includes('pvp');
 

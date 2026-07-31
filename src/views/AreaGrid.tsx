@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Area, Team, Member } from '../models';
 import { Accordion, AreaIcon, TeamStatsTooltip, TeamHeader, MemberCard, Tooltip } from './';
-import { areaHasMissingRequirements, areaHasOfflineMembers, hasMissingRequirements, hasOfflineMembers } from '../utils';
+import { areaHasMissingRequirements, areaHasOfflineMembers, hasMissingRequirements, hasOfflineMembers, trangThaiVoice, demDiemDanh, VoiceState } from '../utils';
 
 interface AreaGridProps {
   areas: Area[];
@@ -38,6 +38,10 @@ interface AreaGridProps {
   memberSource: 'discord' | 'custom';
   onDeleteCustomMember?: (memberId: string) => void;
   readOnly?: boolean;
+  /** Điểm danh voice. Không truyền thì thẻ giữ nguyên như cũ, không tô màu gì. */
+  voiceState?: VoiceState;
+  voiceGan?: Record<string, string>;
+  tenKenhVoice?: Record<string, string>;
 }
 
 export const AreaGrid: React.FC<AreaGridProps> = ({
@@ -72,6 +76,9 @@ export const AreaGrid: React.FC<AreaGridProps> = ({
   memberSource,
   onDeleteCustomMember,
   readOnly = false,
+  voiceState,
+  voiceGan,
+  tenKenhVoice,
 }) => {
   const { t } = useTranslation();
   const [confirmActionId, setConfirmActionId] = useState<string | null>(null);
@@ -137,10 +144,30 @@ export const AreaGrid: React.FC<AreaGridProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 min-w-0 flex-1">                    
-                      <Tooltip content={area.name} position="top" align="left" onlyShowIfTruncated={true} className="flex-1 min-w-0 truncate text-base font-bold text-[#F2F3F5] cursor-default text-left">
-                        {area.name}                        
-                      </Tooltip>   
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Tooltip content={area.name} position="top" align="left" onlyShowIfTruncated={true} className="min-w-0 truncate text-base font-bold text-[#F2F3F5] cursor-default text-left">
+                        {area.name}
+                      </Tooltip>
+                      {/* Đếm điểm danh ngay trên đầu khu. Quét mắt qua 30 thẻ tìm màu đỏ thì
+                          chậm, con số mới trả lời thẳng câu "còn thiếu mấy người". */}
+                      {(() => {
+                        if (!voiceState || !areaTotalMembers) return null;
+                        const d = demDiemDanh(
+                          area.teams.flatMap((t) => t.members), area.id, area.name,
+                          voiceState, voiceGan || {}, tenKenhVoice || {},
+                        );
+                        if (!d.dung && !d.lac && !d.vang) return null;   // khu chưa gán kênh thì đừng bày ra
+                        return (
+                          <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-[#2ecc71]" title="Đã vào đúng kênh voice của khu">
+                              {d.dung}/{d.tong}
+                            </span>
+                            {d.lac > 0 && <span className="text-amber-400" title="Đang trong voice nhưng lạc sang kênh khác">{d.lac} lạc</span>}
+                            {d.vang > 0 && <span className="text-[#ED4245]" title="Không ở kênh voice nào">{d.vang} vắng</span>}
+                            {d.khongro > 0 && <span className="text-[#949BA4]" title="Không tra được: thiếu Discord ID, hoặc khu chưa gán kênh voice">{d.khongro} ?</span>}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -333,6 +360,12 @@ export const AreaGrid: React.FC<AreaGridProps> = ({
                                   memberSource={memberSource}
                                   onDeleteCustomMember={onDeleteCustomMember}
                                   readOnly={readOnly}
+                                  {...(voiceState
+                                    ? (() => {
+                                        const tt = trangThaiVoice(m, area.id, area.name, voiceState, voiceGan || {}, tenKenhVoice || {});
+                                        return { voiceTrangThai: tt.trangThai, voiceTenKenh: tt.tenKenhDangO };
+                                      })()
+                                    : {})}
                                 />
                               ))
                             )}
