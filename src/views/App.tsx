@@ -604,6 +604,9 @@ export default function App() {
           name: team.name,
           members: (team.members || []).map((m) => ({
             name: m.name,
+            // Để backend gắn link hồ sơ Discord vào tên. Id của người thêm tay lúc bot chưa
+            // kết nối không phải snowflake, backend tự bỏ qua mấy trường hợp đó.
+            discordId: m.id,
             ingameName: m.ingameName,
             roleIcon: ROLE_OPTIONS.find((r) => r.id === m.role)?.icon,
             // Vũ khí lưu dạng khoá i18n ('weapons.strategicSword') nên phải dịch trước khi gửi.

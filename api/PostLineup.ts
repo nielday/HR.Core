@@ -30,7 +30,7 @@ const TRAN_KY_TU_TIN = 5800;   // chừa chỗ cho tiêu đề và chân trang
 const TRAN_O = 1024;
 const TRAN_TEN = 256;
 
-type MemberOut = { name: string; ingameName?: string; roleIcon?: string; weapon?: string; isBackup?: boolean };
+type MemberOut = { name: string; ingameName?: string; roleIcon?: string; weapon?: string; isBackup?: boolean; discordId?: string };
 type TeamOut = { name: string; members: MemberOut[] };
 type AreaOut = { name: string; teams: TeamOut[] };
 
@@ -50,12 +50,23 @@ function catVua(s: string, tran: number): string {
   return s.length <= tran ? s : s.slice(0, tran - 1) + '…';
 }
 
+const laSnowflake = (v?: string) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
+
 function dongThanhVien(m: MemberOut): string {
   const ten = (m.ingameName || m.name || '?').trim();
   const icon = m.roleIcon ? `${m.roleIcon} ` : '• ';
   const vk = m.weapon ? ` _(${m.weapon})_` : '';
   const duBi = m.isBackup ? ' `dự bị`' : '';
-  return `${icon}${ten}${vk}${duBi}`;
+  // Gắn link hồ sơ Discord vào tên: chữ vẫn là tên trong game, bấm vào mở tài khoản.
+  // Link kiểu [chữ](url) CHỈ chạy TRONG EMBED, tin chữ thường Discord không nhận. Một lý do
+  // nữa để không quay lại bản chữ thường.
+  // Chỉ gắn khi id đúng dạng snowflake: người thêm tay lúc bot chưa kết nối mang id
+  // 'custom_<thời điểm>', trỏ link vào đó là ra trang lỗi.
+  // Ngoặc vuông trong tên phá cú pháp link nên phải thoát.
+  const chu = laSnowflake(m.discordId)
+    ? `[${ten.replace(/[[\]]/g, '\\$&')}](https://discord.com/users/${(m.discordId as string).trim()})`
+    : ten;
+  return `${icon}${chu}${vk}${duBi}`;
 }
 
 /** Cắt theo DÒNG chứ không cắt giữa tên người, và nói rõ còn sót bao nhiêu. */
