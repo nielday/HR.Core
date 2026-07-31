@@ -1,6 +1,7 @@
 import express from 'express';
 import { getDiscordClient } from './common';
 import { loadDb } from './localDb';
+import { guiDoiHinh } from './botDb';
 
 const router = express.Router();
 
@@ -62,8 +63,8 @@ export function gomTin(khoi: string[], tieuDe: string): string[] {
 
 router.post('/post-lineup', async (req, res) => {
   try {
-    const { groupID, title, areas, channelId } = req.body as {
-      groupID: string; title?: string; areas: AreaOut[]; channelId?: string;
+    const { groupID, title, areas, channelId, nguoiXep } = req.body as {
+      groupID: string; title?: string; areas: AreaOut[]; channelId?: string; nguoiXep?: string;
     };
     if (!groupID) return res.status(400).json({ error: 'Thiếu groupID' });
     if (!Array.isArray(areas) || !areas.length) return res.status(400).json({ error: 'Đội hình rỗng' });
@@ -93,7 +94,14 @@ router.post('/post-lineup', async (req, res) => {
       const msg = await channel.send({ content: tin[i] + duoi, allowedMentions: { parse: [] } });
       ids.push(msg.id);
     }
-    res.json({ success: true, messageIds: ids, soTin: tin.length });
+
+    // Gửi kèm sang bot CoHonCave để trong Discord gõ /doihinh xem lại được, và xem được
+    // cả những lần xếp trước. Việc PHỤ: hỏng thì thôi, đã đăng lên Discord rồi là xong
+    // phần chính, không được để nó kéo cả nút Đăng thành lỗi.
+    const guildId = loadDb().groups[groupID]?.configs?.discord?.guildId;
+    const daGui = await guiDoiHinh({ guildId, ten: title, nguoiXep, areas });
+
+    res.json({ success: true, messageIds: ids, soTin: tin.length, daGuiSangBot: daGui });
   } catch (error: any) {
     console.error('Post lineup error:', error);
     res.status(500).json({ error: error.message || 'Không đăng được đội hình' });

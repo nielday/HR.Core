@@ -563,6 +563,7 @@ export default function App() {
       groupID: userGroup,
       channelId: selectedChannelId || undefined,
       title: t('header.postLineup'),
+      nguoiXep: username,        // để bot hiện "xếp bởi ai" khi gõ /doihinh
       areas: areas.map((area) => ({
         name: area.name,
         teams: (area.teams || []).map((team) => ({
