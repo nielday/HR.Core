@@ -8,6 +8,7 @@ import memberUpdateRouter from './api/MemberUpdate';
 import unassignedSidebarRouter from './api/UnassignedSidebar';
 import matchResultModalRouter from './api/MatchResultModal';
 import tacticsRouter from './api/tactics';
+import postLineupRouter from './api/PostLineup';
 
 export const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api', memberUpdateRouter);
 app.use('/api', unassignedSidebarRouter);
 app.use('/api', matchResultModalRouter);
 app.use('/api', tacticsRouter);
+app.use('/api', postLineupRouter);
 
 // Auto-connect bots on startup
 async function initBots() {

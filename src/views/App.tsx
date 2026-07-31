@@ -1,3 +1,4 @@
+import { ROLE_OPTIONS } from '../constants';
 import React, { useMemo, useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useTeamManager, useFilters, useModals } from '../controllers';
@@ -553,9 +554,46 @@ export default function App() {
     modals.setIsStatsModalOpen(true);
   };
 
+  // Đăng đội hình ra Discord.
+  // FRONTEND dịch chữ ở đây (t() nằm sẵn, biết đang hiển thị gì), BACKEND chỉ lo bố cục và
+  // cắt tin theo trần 2000 ký tự. Để backend tự dịch thì phải chép cả bảng i18n sang, hai
+  // bên lệch nhau lúc nào không hay.
+  const handlePostLineup = async () => {
+    const payload = {
+      groupID: userGroup,
+      channelId: selectedChannelId || undefined,
+      title: t('header.postLineup'),
+      areas: areas.map((area) => ({
+        name: area.name,
+        teams: (area.teams || []).map((team) => ({
+          name: team.name,
+          members: (team.members || []).map((m) => ({
+            name: m.name,
+            ingameName: m.ingameName,
+            roleIcon: ROLE_OPTIONS.find((r) => r.id === m.role)?.icon,
+            // Vũ khí lưu dạng khoá i18n ('weapons.strategicSword') nên phải dịch trước khi gửi.
+            weapon: m.primaryWeapon1?.name ? t(m.primaryWeapon1.name) : undefined,
+            isBackup: m.participationStatus === 'backup',
+          })),
+        })),
+      })),
+    };
+    const res = await fetch('/api/post-lineup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      // Ném nguyên câu lỗi của server: mỗi nguyên nhân cần một cách sửa khác nhau.
+      const loi = await res.json().catch(() => ({}));
+      throw new Error(loi.error || t('header.postLineupError'));
+    }
+  };
+
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#313338] font-sans text-[#DBDEE1]">
-      <AppHeader 
+      <AppHeader
+        onPostLineup={handlePostLineup}
         totalAssignedMembers={totalAssignedMembers} 
         totalMembers={filteredUnassignedByStatus.length} 
         onConfirmAllAssigned={teamManager.handleConfirmAllAssigned}

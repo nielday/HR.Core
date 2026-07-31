@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Settings, Power, PowerOff, Check, RefreshCw, Calendar, BarChart2, X, Trash2, Plus, Globe, Map } from 'lucide-react';
+import { Users, Settings, Power, PowerOff, Check, RefreshCw, Calendar, BarChart2, X, Trash2, Plus, Globe, Map, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DiscordChannel } from '../models';
 import { UserInfo } from './UserInfo';
@@ -29,6 +29,7 @@ interface AppHeaderProps {
   handleClosePoll: () => void;
   handleCloseGvgPoll: () => void;
   showToast: (message: string, type: 'success' | 'error') => void;
+  onPostLineup: () => Promise<void>;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({ 
@@ -54,9 +55,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   handleCreateGvGPoll,
   handleClosePoll,
   handleCloseGvgPoll,
-  showToast
+  showToast,
+  onPostLineup
 }) => {
   const { t, i18n } = useTranslation();
+  const [isPostingLineup, setIsPostingLineup] = useState(false);
   const [isPollActionLoading, setIsPollActionLoading] = useState(false);
   const [isGvgActionLoading, setIsGvgActionLoading] = useState(false);
   const [isPollModalOpen, setIsPollModalOpen] = useState(false);
@@ -123,6 +126,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       showToast(t('header.createPollError'), 'error');
     } finally {
       setIsPollActionLoading(false);
+    }
+  };
+
+  // Lỗi hiện nguyên văn từ server ("chưa chọn kênh", "bot chưa kết nối") thay vì một câu
+  // chung chung, vì mỗi nguyên nhân cần một hành động sửa khác nhau.
+  const wrappedPostLineup = async () => {
+    setIsPostingLineup(true);
+    try {
+      await onPostLineup();
+      showToast(t('header.postLineupSuccess'), 'success');
+    } catch (error: any) {
+      showToast(error?.message || t('header.postLineupError'), 'error');
+    } finally {
+      setIsPostingLineup(false);
     }
   };
 
@@ -283,6 +300,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           >
             {isPollActionLoading ? <RefreshCw size={16} className="animate-spin" /> : <BarChart2 size={16} />}
             <span className="hidden lg:inline">{isPollActionLoading ? t('common.processing') : activePoll ? t('header.closePoll') : t('header.createPoll')}</span>
+          </motion.button>
+
+          {/* Đăng đội hình đã xếp ra kênh Discord. Khoá lại khi bot chưa kết nối, vì bấm
+              lúc đó chỉ nhận lỗi từ server chứ không làm được gì. */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={wrappedPostLineup}
+            disabled={!isInitialStatusChecked || !isConnected || isPostingLineup}
+            className="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed bg-[#5865F2] hover:bg-[#4752C4]"
+            title={isConnected ? t('header.postLineup') : t('header.connectDiscordTitle')}
+          >
+            {isPostingLineup ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+            <span className="hidden lg:inline">{isPostingLineup ? t('common.processing') : t('header.postLineup')}</span>
           </motion.button>
         </div>
 
