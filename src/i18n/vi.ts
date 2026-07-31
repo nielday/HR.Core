@@ -144,7 +144,7 @@ export const vi = {
       expand: 'Mở rộng danh sách',
       collapse: 'Thu nhỏ danh sách',
       sources: {
-        discord: 'Online (Discord)',
+        discord: 'Đang trong kênh voice',
         members: 'Thành viên',
         votes: 'D/s Vote',
         gvg: 'GVG',

@@ -143,7 +143,7 @@ export const en = {
       expand: 'Expand List',
       collapse: 'Collapse List',
       sources: {
-        discord: 'Online (Discord)',
+        discord: 'In voice channel',
         members: 'Members',
         votes: 'Vote List',
         gvg: 'GVG',
