@@ -41,6 +41,9 @@ export type MemberStats = {
 
 export type Member = {
   id: string;
+  // Discord ID thật, tách khỏi `id`. Người thêm tay lúc bot chưa tra ra được mang
+  // id 'custom_<thời điểm>' và giữ nguyên id đó mãi, nên `id` không dùng để gọi Discord.
+  discordId?: string;
   name: string;
   avatar: string;
   ingameName?: string;

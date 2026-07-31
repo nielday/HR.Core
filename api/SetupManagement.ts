@@ -153,6 +153,30 @@ router.get('/custom-members/:groupID', async (req, res) => {
     // Kèm trần 8 người mỗi lượt để không bao giờ dội thành cụm lớn.
     const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
     const TRAN_MOI_LUOT = 8;
+    let coDoi = false;
+
+    // GẮN discordId cho từng bản ghi.
+    // Không dùng thẳng `id` được: người thêm tay lúc bot chưa tra ra mang id
+    // 'custom_<thời điểm>'. Thiếu Discord ID thì đội hình đăng lên Discord không bấm vào
+    // xem hồ sơ được. Mà id thật thì vẫn còn, chỉ là nằm rải ba chỗ khác nhau.
+    // Thứ tự dò: id -> name (bản ghi méo cất id vào ô TÊN) -> URL avatar Discord
+    // (cdn.discordapp.com/avatars/<id>/<hash>).
+    // Chỗ cuối là chỗ CỨU: bản vá avatar trước đây ghi tên thật đè lên ô tên, xoá mất id
+    // nằm trong đó, nhưng lại lưu URL avatar có kèm id. Không dò tới đây là mấy bản ghi cũ
+    // mất id vĩnh viễn.
+    const idTuAvatar = (v: any): string =>
+      typeof v === 'string' ? (v.match(/cdn\.discordapp\.com\/avatars\/(\d+)\//)?.[1] || '') : '';
+    for (const m of groupMembers) {
+      if (laSnowflake(m.discordId)) continue;
+      const tim = [m.id, m.name, idTuAvatar(m.avatar)].find((v) => laSnowflake(v));
+      if (!tim) continue;
+      m.discordId = String(tim).trim();
+      if (localData.members[m.id]) {
+        localData.members[m.id].discordId = m.discordId;   // vá một lần, lần sau khỏi dò lại
+        coDoi = true;
+      }
+    }
+
     try {
       // ⚠️ ĐIỀU KIỆN PHẢI LÀ "CHƯA CÓ ẢNH THẬT", KHÔNG PHẢI "AVATAR RỖNG".
       // Bản trước tôi lọc `!m.avatar` nên không bao giờ chạy: AddMemberModal.tsx:177 đã
@@ -162,17 +186,15 @@ router.get('/custom-members/:groupID', async (req, res) => {
       // Ảnh Discord luôn ở cdn.discordapp.com; thứ gì khác coi như chưa có ảnh thật.
       const laAnhThat = (v: any) => typeof v === 'string' && /(^|\/\/)cdn\.discordapp\.com\//.test(v);
       const canLay = groupMembers
-        .filter((m) => !laAnhThat(m.avatar) && (laSnowflake(m.id) || laSnowflake(m.name)))
+        .filter((m) => !laAnhThat(m.avatar) && laSnowflake(m.discordId))
         .slice(0, TRAN_MOI_LUOT);
 
       if (canLay.length) {
         const client = await getDiscordClient(groupID);
         if (client) {
-          let coDoi = false;
           for (const m of canLay) {
-            const did = laSnowflake(m.id) ? m.id.trim() : m.name.trim();
             try {
-              const u = await client.users.fetch(did);
+              const u = await client.users.fetch(m.discordId);
               if (!u) continue;
               m.avatar = u.displayAvatarURL();
               if (laSnowflake(m.name)) m.name = normalizeDiscordName(u.globalName || u.username);
@@ -184,12 +206,15 @@ router.get('/custom-members/:groupID', async (req, res) => {
               }
             } catch { /* người này không tra được thì bỏ, đừng dừng cả vòng */ }
           }
-          if (coDoi) saveDb(localData);
         }
       }
     } catch (e: any) {
       console.warn('[custom-members] Không làm tươi được avatar:', e?.message);
     }
+
+    // Ghi MỘT lần cho cả vá discordId lẫn làm tươi avatar. Trước đây lệnh ghi nằm lọt trong
+    // nhánh lấy avatar, nên lần vá chỉ có discordId mà không ai cần avatar là mất trắng.
+    if (coDoi) saveDb(localData);
 
     res.json(groupMembers);
   } catch (error) {

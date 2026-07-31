@@ -63,6 +63,9 @@ router.get('/discord-user/:groupID', async (req, res) => {
       return res.json({
         ...localMember,
         id: member.id,
+        // Cất RIÊNG Discord ID. `id` không giữ nổi: người thêm tay lúc bot chưa tra ra được
+        // sẽ mang id 'custom_<thời điểm>', và cái id đó theo bản ghi mãi về sau.
+        discordId: member.id,
         name: normalizeDiscordName(member.displayName),
         avatar: member.user.displayAvatarURL(),
         isGlobal: true,
@@ -71,6 +74,7 @@ router.get('/discord-user/:groupID', async (req, res) => {
 
     res.json({
       id: member.id,
+      discordId: member.id,
       name: normalizeDiscordName(member.displayName),
       avatar: member.user.displayAvatarURL(),
       isGlobal: false

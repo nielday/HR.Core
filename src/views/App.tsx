@@ -604,9 +604,10 @@ export default function App() {
           name: team.name,
           members: (team.members || []).map((m) => ({
             name: m.name,
-            // Để backend gắn link hồ sơ Discord vào tên. Id của người thêm tay lúc bot chưa
-            // kết nối không phải snowflake, backend tự bỏ qua mấy trường hợp đó.
-            discordId: m.id,
+            // Để backend gắn mention mở hồ sơ Discord. Ưu tiên discordId; `id` chỉ dùng khi
+            // thiếu, vì người thêm tay lúc bot chưa tra ra được mang id 'custom_<thời điểm>'.
+            // Không tìm ra id thật thì backend để nguyên chữ thường.
+            discordId: m.discordId || m.id,
             ingameName: m.ingameName,
             roleIcon: ROLE_OPTIONS.find((r) => r.id === m.role)?.icon,
             // Vũ khí lưu dạng khoá i18n ('weapons.strategicSword') nên phải dịch trước khi gửi.
