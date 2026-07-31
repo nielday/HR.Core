@@ -1,0 +1,1333 @@
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Member, Team, Area, SavedSetup, SetupMetadata } from '../models';
+import { defaultReqs, WEAPONS, RANKS } from '../constants';
+import { initialUnassigned, getTranslatedAreas, isTowerArea, isPVPArea, normalizeDiscordName } from '../utils';
+
+const isSpecialArea = (areaName: string) => isTowerArea(areaName) || isPVPArea(areaName);
+
+export function useTeamManager(isConnected: boolean, groupID: string, username: string = 'Unknown', showToast?: (msg: string, type: 'success' | 'error' | 'info') => void) {
+  const { t } = useTranslation();
+  const [unassignedMembers, setUnassignedMembers] = useState<Member[]>(initialUnassigned);
+  const [areas, setAreas] = useState<Area[]>(() => getTranslatedAreas(t));
+  
+  // Save State
+  const [savedSetups, setSavedSetups] = useState<SetupMetadata[]>([]);
+  const [isSetupDropdownOpen, setIsSetupDropdownOpen] = useState(false);
+  const [currentSetupName, setCurrentSetupName] = useState(() => t('setup.newSetup'));
+  const [currentSetupId, setCurrentSetupId] = useState<string | null>(null);
+
+  // Selection State
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+
+  const [memberSource, setMemberSource] = useState<'discord' | 'custom' | 'poll' | 'gvg'>('discord');
+  const [lastRefreshedSource, setLastRefreshedSource] = useState<'discord' | 'custom' | 'poll' | 'gvg' | null>(null);
+
+  const [activePoll, setActivePoll] = useState<any>(null);
+  const [activeGvgPoll, setActiveGvgPoll] = useState<any>(null);
+  const [gvgPollOptions, setGvgPollOptions] = useState<string[]>([]);
+  const [gvgOptionIndex, setGvgOptionIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isConnected && (memberSource === 'discord' || memberSource === 'poll' || memberSource === 'gvg')) {
+      setMemberSource('custom');
+    }
+  }, [isConnected, memberSource]);
+
+  useEffect(() => {
+    if (!groupID) {
+      setActivePoll(null);
+      setActiveGvgPoll(null);
+      setGvgPollOptions([]);
+      return;
+    }
+    const fetchPolls = async () => {
+      try {
+        const res = await fetch(`/api/poll/${groupID}`);
+        if (res.ok) {
+          const data = await res.json();
+          setActivePoll(data);
+        } else {
+          setActivePoll(null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch regular poll:', err);
+        setActivePoll(null);
+        if (showToast) showToast(t('header.createPollError'), 'error');
+      }
+      
+      try {
+        const resGvg = await fetch(`/api/poll/${groupID}?type=gvg`);
+        if (resGvg.ok) {
+          const dataGvg = await resGvg.json();
+          if (dataGvg && !dataGvg.isClosed) {
+            setActiveGvgPoll(dataGvg);
+            if (dataGvg.isGvg && dataGvg.answers) {
+              setGvgPollOptions(dataGvg.answers);
+            } else {
+              setGvgPollOptions([]);
+            }
+          } else {
+            setActiveGvgPoll(null);
+            setGvgPollOptions([]);
+          }
+        } else {
+          setActiveGvgPoll(null);
+          setGvgPollOptions([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch GvG poll:', err);
+        setActiveGvgPoll(null);
+        setGvgPollOptions([]);
+        if (showToast) showToast(t('header.openGvgError'), 'error');
+      }
+    };
+    fetchPolls();
+  }, [groupID]);
+
+  const handleCreatePoll = async (pollData?: { question: string; answers: string[]; allowMultiselect?: boolean; duration?: number; optionMappings?: Record<string, number>; channelId?: string }) => {
+    try {
+      const res = await fetch(`/api/poll/${groupID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pollData || {})
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActivePoll(data);
+      } else {
+        const err = await res.json();
+        console.error('Failed to create poll:', err);
+      }
+    } catch (err) {
+      console.error('Error creating poll:', err);
+    }
+  };
+
+  const handleCreateGvGPoll = async (pollData: { question: string; answers: string[]; channelId?: string }) => {
+    try {
+      const res = await fetch(`/api/poll/${groupID}?type=gvg`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...pollData,
+          allowMultiselect: true,
+          duration: 168,
+          isGvg: true
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveGvgPoll({ ...data, isGvg: true });
+        setGvgPollOptions(pollData.answers);
+        setGvgOptionIndex(null);
+        if (memberSource === 'gvg') {
+          setMemberSource('discord');
+        }
+        return true;
+      } else {
+        const err = await res.json();
+        console.error('Failed to create GvG poll:', err);
+        return false;
+      }
+    } catch (err) {
+      console.error('Error creating GvG poll:', err);
+      return false;
+    }
+  };
+
+  const handleClosePoll = async () => {
+    try {
+      const res = await fetch(`/api/poll/${groupID}/close`, { method: 'POST' });
+      if (res.ok) {
+        setActivePoll(null);
+        if (memberSource === 'poll') {
+          setMemberSource('discord');
+        }
+      } else {
+        const err = await res.json();
+        console.error('Failed to close poll:', err);
+      }
+    } catch (err) {
+      console.error('Error closing poll:', err);
+    }
+  };
+
+  const handleCloseGvgPoll = async () => {
+    try {
+      const res = await fetch(`/api/poll/${groupID}/close?type=gvg`, { method: 'POST' });
+      if (res.ok) {
+        setActiveGvgPoll(null);
+      } else {
+        const err = await res.json();
+        console.error('Failed to close GvG poll:', err);
+      }
+    } catch (err) {
+      console.error('Error closing GvG poll:', err);
+    }
+  };
+
+  // Fetch setups from server on mount
+  useEffect(() => {
+    if (!groupID) return;
+    const fetchSetups = async () => {
+      try {
+        const response = await fetch(`/api/setups/${groupID}`);
+        const contentType = response.headers.get('content-type');
+        if (response.ok && contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          setSavedSetups(data);
+        } else if (!response.ok) {
+          console.error(`Setups fetch failed with status ${response.status}`);
+        }
+      } catch (error) {
+        console.error('Failed to fetch setups:', error);
+        if (showToast) showToast(t('setup.noSavedSetups'), 'error');
+      }
+    };
+    fetchSetups();
+  }, [groupID]);
+
+  const handleAddArea = () => {
+    const newArea: Area = {
+      id: `a${Date.now()}`,
+      name: 'Nhóm mới',
+      teams: []
+    };
+    setAreas([...areas, newArea]);
+  };
+
+  const handleDeleteArea = (areaId: string) => {
+    const area = areas.find(a => a.id === areaId);
+    if (area?.isLocked) return;
+    
+    // If deleting a normal area, remove its members from special teams
+    if (area && !isSpecialArea(area.name)) {
+      const memberIdsToRemove = new Set<string>();
+      area.teams.forEach(t => t.members.forEach(m => memberIdsToRemove.add(m.id)));
+      
+      setAreas(prev => prev.filter(a => a.id !== areaId).map(a => {
+        if (isSpecialArea(a.name)) {
+          return {
+            ...a,
+            teams: a.teams.map(t => ({
+              ...t,
+              members: t.members.filter(m => !memberIdsToRemove.has(m.id))
+            }))
+          };
+        }
+        return a;
+      }));
+    } else {
+      setAreas(areas.filter(a => a.id !== areaId));
+    }
+  };
+
+  const handleRenameArea = (areaId: string, newName: string) => {
+    const area = areas.find(a => a.id === areaId);
+    if (area?.isLocked) return;
+    setAreas(areas.map(a => a.id === areaId ? { ...a, name: newName } : a));
+  };
+
+  const handleAddTeam = (areaId: string) => {
+    const area = areas.find(a => a.id === areaId);
+    if (area?.isLocked) return;
+    const newTeam: Team = {
+      id: `t${Date.now()}`,
+      name: 'Nhóm mới',
+      members: [],
+      requirements: {}
+    };
+    setAreas(areas.map(a => a.id === areaId ? { ...a, teams: [...a.teams, newTeam] } : a));
+  };
+
+  const handleDeleteTeam = (teamId: string) => {
+    let isLocked = false;
+    let teamToRemove: Team | undefined;
+    let areaOfTeam: Area | undefined;
+
+    areas.forEach(area => {
+      const team = area.teams.find(t => t.id === teamId);
+      if (team) {
+        teamToRemove = team;
+        areaOfTeam = area;
+        if (team.isLocked) isLocked = true;
+      }
+    });
+
+    if (isLocked) return;
+
+    // If deleting a normal team, remove its members from special teams
+    if (teamToRemove && areaOfTeam && !isSpecialArea(areaOfTeam.name)) {
+      const memberIdsToRemove = new Set(teamToRemove.members.map(m => m.id));
+      setAreas(areas.map(a => ({
+        ...a,
+        teams: a.teams.filter(t => t.id !== teamId).map(t => {
+          if (isSpecialArea(a.name)) {
+            return {
+              ...t,
+              members: t.members.filter(m => !memberIdsToRemove.has(m.id))
+            };
+          }
+          return t;
+        })
+      })));
+    } else {
+      setAreas(areas.map(a => ({
+        ...a,
+        teams: a.teams.filter(t => t.id !== teamId)
+      })));
+    }
+    
+    if (selectedTeamId === teamId) {
+      setSelectedTeamId(null);
+    }
+  };
+
+  const handleRenameTeam = (teamId: string, newName: string) => {
+    let isLocked = false;
+    areas.forEach(area => {
+      const team = area.teams.find(t => t.id === teamId);
+      if (team?.isLocked) isLocked = true;
+    });
+
+    if (isLocked) return;
+
+    setAreas(areas.map(a => ({
+      ...a,
+      teams: a.teams.map(t => t.id === teamId ? { ...t, name: newName } : t)
+    })));
+  };
+
+  const handleUpdateUnassignedMember = async (updatedMember: Member) => {
+    setUnassignedMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
+    
+    try {
+      await fetch(`/api/member-profiles/${groupID}?name=${encodeURIComponent(updatedMember.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMember)
+      });
+    } catch (error) {
+      console.error('Failed to save member profile:', error);
+    }
+  };
+
+  const handleUpdateSetupMember = (updatedMember: Member) => {
+    setAreas(prev => prev.map(a => ({
+      ...a,
+      teams: a.teams.map(t => ({
+        ...t,
+        members: t.members.map(m => m.id === updatedMember.id ? updatedMember : m)
+      }))
+    })));
+  };
+
+  const handleConfirmAllAssigned = () => {
+    setAreas(prev => prev.map(a => ({
+      ...a,
+      teams: a.teams.map(t => ({
+        ...t,
+        members: t.members.map(m => ({ 
+          ...m, 
+          stats: {
+            leagueMatches: m.stats?.leagueMatches || 0,
+            ratedMatches: m.stats?.ratedMatches || 0,
+            confirmedMatches: m.isConfirmed ? (m.stats?.confirmedMatches || 0) : (m.stats?.confirmedMatches || 0) + 1
+          },
+          isConfirmed: true 
+        }))
+      }))
+    })));
+  };
+
+  const handleClearTeamMembers = (teamId: string) => {
+    const areaOfTeam = areas.find(a => a.teams.some(t => t.id === teamId));
+    const isNormalTeam = areaOfTeam && !isSpecialArea(areaOfTeam.name);
+    
+    const teamToClear = areaOfTeam?.teams.find(t => t.id === teamId);
+    const memberIdsToRemove = new Set(teamToClear?.members.map(m => m.id) || []);
+
+    setAreas(areas.map(a => ({
+      ...a,
+      teams: a.teams.map(t => {
+        if (t.id === teamId) {
+          return { ...t, members: [] };
+        }
+        // If we cleared a normal team, also remove those members from special teams
+        if (isNormalTeam && isSpecialArea(a.name)) {
+          return {
+            ...t,
+            members: t.members.filter(m => !memberIdsToRemove.has(m.id))
+          };
+        }
+        return t;
+      })
+    })));
+  };
+
+  const handleClearAreaMembers = (areaId: string) => {
+    const areaToClear = areas.find(a => a.id === areaId);
+    const isNormalArea = areaToClear && !isSpecialArea(areaToClear.name);
+    const memberIdsToRemove = new Set<string>();
+    if (isNormalArea) {
+      areaToClear.teams.forEach(t => t.members.forEach(m => memberIdsToRemove.add(m.id)));
+    }
+
+    setAreas(areas.map(a => {
+      if (a.id === areaId) {
+        return {
+          ...a,
+          teams: a.teams.map(t => ({ ...t, members: [] }))
+        };
+      }
+      // If we cleared a normal area, also remove those members from special teams
+      if (isNormalArea && isSpecialArea(a.name)) {
+        return {
+          ...a,
+          teams: a.teams.map(t => ({
+            ...t,
+            members: t.members.filter(m => !memberIdsToRemove.has(m.id))
+          }))
+        };
+      }
+      return a;
+    }));
+  };
+
+  const handleMoveMember = (memberId: string, sourceId: string, targetId: string, targetIndex?: number) => {
+    if (sourceId === targetId) {
+      // Reordering within the same container
+      if (sourceId === 'unassigned') return; // No reordering in unassigned
+      
+      setAreas(prev => prev.map(area => ({
+        ...area,
+        teams: area.teams.map(team => {
+          if (team.id === sourceId) {
+            const newMembers = [...team.members];
+            const currentIndex = newMembers.findIndex(m => m.id === memberId);
+            if (currentIndex === -1 || targetIndex === undefined) return team;
+            
+            const [movedMember] = newMembers.splice(currentIndex, 1);
+            
+            // Adjust targetIndex if dragging downwards
+            let finalIndex = targetIndex;
+            if (currentIndex < targetIndex) {
+              finalIndex -= 1;
+            }
+            
+            newMembers.splice(finalIndex, 0, movedMember);
+            return { ...team, members: newMembers };
+          }
+          return team;
+        })
+      })));
+      return;
+    }
+
+    if (targetId === 'unassigned') {
+      return; // Cannot drag back to unassigned list
+    }
+
+    // Check if target is a team and if it's in "Team trụ" area
+    let targetAreaForMember: Area | undefined;
+    let targetTeamForMember: Team | undefined;
+    for (const area of areas) {
+      const team = area.teams.find(t => t.id === targetId);
+      if (team) {
+        targetAreaForMember = area;
+        targetTeamForMember = team;
+        break;
+      }
+    }
+
+    const isSpecialArea = (name: string) => isTowerArea(name) || isPVPArea(name);
+    const targetIsSpecial = targetAreaForMember && isSpecialArea(targetAreaForMember.name);
+
+    // Rule: Cannot drag from unassigned sidebar to special team unless they are already in a team
+    if (sourceId === 'unassigned' && targetIsSpecial) {
+      const isInAnyTeam = areas.some(a => a.teams.some(t => t.members.some(m => m.id === memberId)));
+      if (!isInAnyTeam) {
+        return;
+      }
+    }
+
+    if (targetIsSpecial && targetTeamForMember && targetTeamForMember.members.length >= 3) {
+      return;
+    }
+
+    let memberToMove: Member | undefined;
+
+    // Find the member to move
+    if (sourceId === 'unassigned') {
+      memberToMove = unassignedMembers.find(m => m.id === memberId);
+    } else {
+      for (const area of areas) {
+        const team = area.teams.find(t => t.id === sourceId);
+        if (team) {
+          memberToMove = team.members.find(m => m.id === memberId);
+          break;
+        }
+      }
+    }
+
+    if (!memberToMove) return;
+
+    setAreas(prev => {
+      let nextAreas = [...prev];
+      
+      const sourceArea = prev.find(a => a.teams.some(t => t.id === sourceId));
+      const sourceIsSpecial = sourceArea && isSpecialArea(sourceArea.name);
+
+      // Rule: If target is special, we only remove from source if source is also a special area of the SAME type.
+      // Rule: If target is NOT special, we remove from any other NOT special team.
+      
+      if (targetIsSpecial) {
+        const targetIsTower = isTowerArea(targetAreaForMember!.name);
+        const targetIsPVP = isPVPArea(targetAreaForMember!.name);
+
+        // Rule: A member can only be in ONE team of the SAME special type (PVP or Tower).
+        // Remove from teams in the same special category first.
+        nextAreas = nextAreas.map(a => {
+          const areaIsTower = isTowerArea(a.name);
+          const areaIsPVP = isPVPArea(a.name);
+
+          if ((targetIsTower && areaIsTower) || (targetIsPVP && areaIsPVP)) {
+            return {
+              ...a,
+              teams: a.teams.map(t => ({
+                ...t,
+                members: t.members.filter(m => m.id !== memberId)
+              }))
+            };
+          }
+          return a;
+        });
+        
+        // If source was NOT special, we don't remove from source (normal team)
+        // because we want them to stay in the normal team.
+      } else {
+        // Target is NOT special
+        // Remove from any other NOT special team
+        nextAreas = nextAreas.map(a => {
+          if (isSpecialArea(a.name)) return a; // Don't remove from special teams
+          return {
+            ...a,
+            teams: a.teams.map(t => ({
+              ...t,
+              members: t.members.filter(m => m.id !== memberId)
+            }))
+          };
+        });
+      }
+
+      // 3. Add to target
+      if (targetId.startsWith('area-')) {
+        const areaId = targetId.replace('area-', '');
+        const targetArea = nextAreas.find(a => a.id === areaId);
+        
+        // Rule: Cannot create new team in special area by dragging to empty space/header
+        if (targetArea && isSpecialArea(targetArea.name)) {
+          return prev;
+        }
+
+        return nextAreas.map(area => {
+          if (area.id === areaId) {
+            const newTeam: Team = {
+              id: `t${Date.now()}`,
+              name: 'Nhóm mới',
+              members: [memberToMove!],
+              requirements: { ...defaultReqs }
+            };
+            return { ...area, teams: [...area.teams, newTeam] };
+          }
+          return area;
+        });
+      }
+
+      return nextAreas.map(area => ({
+        ...area,
+        teams: area.teams.map(team => {
+          if (team.id === targetId) {
+            const newMembers = [...team.members];
+            if (targetIndex !== undefined) {
+              newMembers.splice(targetIndex, 0, memberToMove!);
+            } else {
+              newMembers.push(memberToMove!);
+            }
+            return { ...team, members: newMembers };
+          }
+          return team;
+        })
+      }));
+    });
+  };
+
+  const handleMoveTeam = (teamId: string, sourceAreaId: string, targetId: string) => {
+    setAreas(prev => {
+      // Find the team to move from the current state (prev)
+      let currentTeamToMove: Team | undefined;
+      for (const area of prev) {
+        if (area.id === sourceAreaId) {
+          currentTeamToMove = area.teams.find(t => t.id === teamId);
+          break;
+        }
+      }
+
+      if (!currentTeamToMove || currentTeamToMove.isLocked) return prev;
+
+      // targetId can be an area ID (area-ID), a team ID (team-ID), or 'unassigned'
+      if (targetId === 'unassigned') {
+        const sourceArea = prev.find(a => a.id === sourceAreaId);
+        const isNormalArea = sourceArea && !isSpecialArea(sourceArea.name);
+        const teamToRemove = sourceArea?.teams.find(t => t.id === teamId);
+        const memberIdsToRemove = new Set(teamToRemove?.members.map(m => m.id) || []);
+
+        // Remove team and unassign all its members
+        return prev.map(area => {
+          if (area.id === sourceAreaId) {
+            return { ...area, teams: area.teams.filter(t => t.id !== teamId) };
+          }
+          // If we removed a normal team, also remove its members from special teams
+          if (isNormalArea && isSpecialArea(area.name)) {
+            return {
+              ...area,
+              teams: area.teams.map(t => ({
+                ...t,
+                members: t.members.filter(m => !memberIdsToRemove.has(m.id))
+              }))
+            };
+          }
+          return area;
+        });
+      } else if (targetId.startsWith('area-')) {
+        const targetAreaId = targetId.replace('area-', '');
+        const targetArea = prev.find(a => a.id === targetAreaId);
+        if (sourceAreaId === targetAreaId || targetArea?.isLocked) return prev;
+
+        // Rule: Cannot move a team into a special area (members must stay in a Normal area)
+        if (targetArea && isSpecialArea(targetArea.name)) {
+          return prev;
+        }
+
+        // Remove from source
+        const updatedAreas = prev.map(area => {
+          if (area.id === sourceAreaId) {
+            return { ...area, teams: area.teams.filter(t => t.id !== teamId) };
+          }
+          return area;
+        });
+
+        // Add to target
+        return updatedAreas.map(area => {
+          if (area.id === targetAreaId) {
+            return { ...area, teams: [...area.teams, currentTeamToMove!] };
+          }
+          return area;
+        });
+      } else {
+        // targetId is a team ID - Merge
+        const targetTeamId = targetId;
+        if (teamId === targetTeamId) return prev;
+
+        // Check if target team is in "Team trụ"
+        let targetAreaForMerge: Area | undefined;
+        let targetTeamForMerge: Team | undefined;
+        for (const area of prev) {
+          const team = area.teams.find(t => t.id === targetTeamId);
+          if (team) {
+            targetAreaForMerge = area;
+            targetTeamForMerge = team;
+            break;
+          }
+        }
+
+        // Rule: Cannot merge a team into a special team (members must stay in a Normal area)
+        if (targetAreaForMerge && isSpecialArea(targetAreaForMerge.name)) {
+          return prev;
+        }
+
+        // Check if target team is locked
+        let isTargetLocked = false;
+        for (const area of prev) {
+          const team = area.teams.find(t => t.id === targetTeamId);
+          if (team?.isLocked) {
+            isTargetLocked = true;
+            break;
+          }
+        }
+        if (isTargetLocked) return prev;
+
+        // Find target team and merge members
+        let membersToMerge: Member[] = currentTeamToMove!.members;
+        
+        const updatedAreas = prev.map(area => {
+          // Remove source team
+          if (area.id === sourceAreaId) {
+            return { ...area, teams: area.teams.filter(t => t.id !== teamId) };
+          }
+          return area;
+        });
+
+        return updatedAreas.map(area => {
+          // Add members to target team
+          return {
+            ...area,
+            teams: area.teams.map(team => {
+              if (team.id === targetTeamId) {
+                // Prevent duplicate members if they somehow already exist
+                const existingMemberIds = new Set(team.members.map(m => m.id));
+                const uniqueMembersToMerge = membersToMerge.filter(m => !existingMemberIds.has(m.id));
+                return { ...team, members: [...team.members, ...uniqueMembersToMerge] };
+              }
+              return team;
+            })
+          };
+        });
+      }
+    });
+  };
+
+  const handleRemoveFromTeam = (member: Member, teamId: string) => {
+    setAreas(prev => {
+      const sourceArea = prev.find(a => a.teams.some(t => t.id === teamId));
+      const sourceIsSpecial = sourceArea && isSpecialArea(sourceArea.name);
+
+      let nextAreas = prev.map(area => ({
+        ...area,
+        teams: area.teams.map(team => {
+          if (team.id === teamId) {
+            return { ...team, members: team.members.filter(m => m.id === member.id ? false : true) };
+          }
+          return team;
+        })
+      }));
+
+      // If removed from a normal team, also remove from all special teams
+      if (!sourceIsSpecial) {
+        nextAreas = nextAreas.map(area => {
+          if (isSpecialArea(area.name)) {
+            return {
+              ...area,
+              teams: area.teams.map(team => ({
+                ...team,
+                members: team.members.filter(m => m.id !== member.id)
+              }))
+            };
+          }
+          return area;
+        });
+      }
+
+      return nextAreas;
+    });
+  };
+
+  const handleAddToSelectedTeam = (member: Member) => {
+    if (!selectedTeamId) return;
+    handleMoveMember(member.id, 'unassigned', selectedTeamId);
+  };
+
+  const handleSaveTeamSettings = (teamId: string, newReqs: Record<string, number>) => {
+    setAreas(prev => prev.map(area => ({
+      ...area,
+      teams: area.teams.map(team => 
+        team.id === teamId 
+          ? { ...team, requirements: newReqs } 
+          : team
+      )
+    })));
+  };
+
+  const handleConfirmSave = async () => {
+    let setupToSave: SavedSetup;
+    
+    // Save all areas and teams as they are, including empty ones
+    const savedAreas = JSON.parse(JSON.stringify(areas));
+
+    if (currentSetupId) {
+      setupToSave = {
+        id: currentSetupId,
+        name: currentSetupName,
+        areas: savedAreas,
+        unassignedMembers: [], // Sidebar pool is not saved in setup
+        timestamp: Date.now(),
+        memberSource: lastRefreshedSource || memberSource,
+        creator: username
+      };
+    } else {
+      const newId = `setup_${Date.now()}`;
+      setupToSave = {
+        id: newId,
+        name: currentSetupName,
+        areas: savedAreas,
+        unassignedMembers: [],
+        timestamp: Date.now(),
+        memberSource: lastRefreshedSource || memberSource,
+        creator: username
+      };
+      setCurrentSetupId(newId);
+    }
+
+    try {
+      const response = await fetch(`/api/setups/${groupID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(setupToSave)
+      });
+
+      if (response.ok) {
+        setSavedSetups(prev => {
+          const exists = prev.some(s => s.id === setupToSave.id);
+          const newMetadata: SetupMetadata = {
+            id: setupToSave.id,
+            name: setupToSave.name,
+            timestamp: setupToSave.timestamp,
+            creator: setupToSave.creator || 'Unknown'
+          };
+          if (exists) {
+            return prev.map(s => s.id === setupToSave.id ? newMetadata : s);
+          }
+          return [newMetadata, ...prev];
+        });
+        setIsSetupDropdownOpen(false);
+      } else {
+        console.error('Failed to save setup to server');
+        if (showToast) showToast(t('setup.saveError'), 'error');
+      }
+    } catch (error) {
+      console.error('Error saving setup:', error);
+      if (showToast) showToast(t('setup.saveError'), 'error');
+    }
+  };
+
+  const handleCreateNewSetup = () => {
+    // Reset areas to the initial state defined in utils
+    const translatedAreas = getTranslatedAreas(t);
+    const resetAreas: Area[] = translatedAreas.map(area => ({
+      ...area,
+      teams: area.teams.map(team => ({
+        ...team,
+        members: [],
+        requirements: { ...defaultReqs }
+      }))
+    }));
+
+    setAreas(resetAreas);
+    setCurrentSetupName(t('setup.newSetup'));
+    setCurrentSetupId(null);
+    setSelectedTeamId(null);
+    setIsSetupDropdownOpen(false);
+  };
+
+  const handleLoadSetup = async (setupMetadata: SetupMetadata) => {
+    try {
+      const response = await fetch(`/api/setups/${groupID}/${setupMetadata.id}`);
+      if (!response.ok) throw new Error('Failed to load setup');
+      const setup: SavedSetup = await response.json();
+
+      // 1. Create a lookup map from the CURRENT sidebar members to get the latest metadata
+      const currentSidebarMap = new Map<string, Member>();
+      unassignedMembers.forEach(m => currentSidebarMap.set(m.id, m));
+
+      // 2. Map the saved areas/teams using live data from sidebar if available
+      const newAreas = setup.areas.map(area => ({
+        ...area,
+        teams: area.teams.map(team => {
+          // Migrate legacy position requirements to new IDs
+          const migratedReqs = { ...team.requirements };
+          if (migratedReqs['công']) { migratedReqs['pos_cong'] = migratedReqs['công']; delete migratedReqs['công']; }
+          if (migratedReqs['thủ']) { migratedReqs['pos_thu'] = migratedReqs['thủ']; delete migratedReqs['thủ']; }
+          // Note: we don't migrate 'flex' automatically because it could be a role or position.
+          // New position requirements will use 'pos_flex'.
+          
+          return {
+            ...team,
+            requirements: migratedReqs,
+            members: team.members.map(savedMember => {
+              const liveMember = currentSidebarMap.get(savedMember.id);
+              // Use live data if member exists in sidebar, otherwise fall back to saved data
+              return liveMember ? { ...liveMember } : { ...savedMember };
+            })
+          };
+        })
+      }));
+
+      // 3. Update ONLY areas state
+      setAreas(newAreas);
+      setCurrentSetupName(setup.name);
+      setCurrentSetupId(setup.id);
+      if (setup.memberSource) {
+        setMemberSource(setup.memberSource);
+        setLastRefreshedSource(setup.memberSource);
+      }
+    } catch (error) {
+      console.error('Error loading setup:', error);
+    }
+  };
+
+  const handleDeleteSetup = async (e: React.MouseEvent, setupId: string) => {
+    e.stopPropagation();
+    
+    try {
+      const response = await fetch(`/api/setups/${groupID}/${setupId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setSavedSetups(prev => prev.filter(s => s.id !== setupId));
+        if (currentSetupId === setupId) {
+          setCurrentSetupId(null);
+        }
+        return true;
+      } else {
+        console.error('Failed to delete setup from server');
+        if (showToast) showToast(t('setup.deleteError'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting setup:', error);
+      if (showToast) showToast(t('setup.deleteError'), 'error');
+      return false;
+    }
+  };
+
+  const handleCopySetup = async (setupMetadata: SetupMetadata) => {
+    try {
+      const response = await fetch(`/api/setups/${groupID}/${setupMetadata.id}`);
+      if (!response.ok) throw new Error('Failed to load setup');
+      const setup: SavedSetup = await response.json();
+
+      const newId = `setup_${Date.now()}`;
+      const newSetup: SavedSetup = {
+        ...setup,
+        id: newId,
+        name: `${setup.name} (copy)`,
+        timestamp: Date.now(),
+        creator: username
+      };
+
+      const saveResponse = await fetch(`/api/setups/${groupID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSetup)
+      });
+
+      if (saveResponse.ok) {
+        setSavedSetups(prev => [
+          { id: newSetup.id, name: newSetup.name, timestamp: newSetup.timestamp, creator: newSetup.creator || 'Unknown' },
+          ...prev
+        ]);
+        return true;
+      } else {
+        console.error('Failed to copy setup to server');
+        if (showToast) showToast(t('setup.duplicateError'), 'error');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error copying setup:', error);
+      if (showToast) showToast(t('setup.duplicateError'), 'error');
+      return false;
+    }
+  };
+
+  const refreshMembers = async (sourceOverride?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string) => {
+    if (!groupID) {
+      console.warn('Cannot refresh members: groupID is missing');
+      return;
+    }
+    
+    let source = sourceOverride || memberSource;
+    if (!isConnected && (source === 'discord' || source === 'poll' || source === 'gvg')) {
+      source = 'custom';
+    }
+    const gvgIdx = gvgIndex !== undefined ? gvgIndex : gvgOptionIndex;
+    
+    try {
+      // Parallelize initial data fetching to reduce delay
+      const fetchPromises: Promise<any>[] = [];
+      
+      // 1. Fetch members (Discord or Custom)
+      if (source === 'discord' || source === 'poll' || source === 'gvg') {
+        const url = new URL(`/api/members/${groupID}`, window.location.origin);
+        if (channelId) {
+          url.searchParams.append('channelID', channelId);
+        }
+        fetchPromises.push(fetch(url.toString()).then(async res => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(`Lỗi lấy thành viên (${res.status}): ${errData.error || res.statusText}`);
+          }
+          return res.json();
+        }));
+      } else {
+        fetchPromises.push(fetch(`/api/custom-members/${groupID}`).then(async res => {
+          if (!res.ok) throw new Error('Không thể lấy danh sách thành viên đăng ký');
+          return res.json();
+        }));
+      }
+      
+      // 2. Fetch member configs
+      fetchPromises.push(fetch(`/api/members-config/${groupID}`).then(res => res.ok ? res.json() : {}));
+      
+      // 3. Fetch poll results if needed
+      if (source === 'poll') {
+        fetchPromises.push(fetch(`/api/poll/results/${groupID}`).then(res => res.ok ? res.json() : null));
+      } else if (source === 'gvg' && gvgIdx !== null) {
+        fetchPromises.push(fetch(`/api/poll/results/${groupID}?type=gvg`).then(res => res.ok ? res.json() : null));
+      } else {
+        fetchPromises.push(Promise.resolve(null));
+      }
+
+      const [membersData, memberConfigs, pollResultsData] = await Promise.all(fetchPromises);
+      
+      let fetchedMembers = Array.isArray(membersData) ? membersData : (membersData.members || []);
+      let pollResults: { continue: string[], backup: string[] } | null = source === 'poll' ? { continue: [], backup: [] } : null;
+      let gvgResults: string[] | null = source === 'gvg' ? [] : null;
+
+      if (source === 'poll' && pollResultsData) {
+        const rawPollResults = pollResultsData;
+        const allPollUsers = [...(rawPollResults.continue || []), ...(rawPollResults.backup || [])];
+        const existingIds = new Set(fetchedMembers.map((m: any) => m.id));
+        
+        allPollUsers.forEach(u => {
+          if (!existingIds.has(u.id)) {
+            fetchedMembers.push(u);
+            existingIds.add(u.id);
+          }
+        });
+
+        pollResults = {
+          continue: (rawPollResults.continue || []).map((u: any) => u.id),
+          backup: (rawPollResults.backup || []).map((u: any) => u.id)
+        };
+      } else if (source === 'gvg' && gvgIdx !== null && pollResultsData) {
+        const allResults = pollResultsData;
+        if (allResults.options && allResults.options[gvgIdx]) {
+          const optionUsers = allResults.options[gvgIdx].users || [];
+          const existingIds = new Set(fetchedMembers.map((m: any) => m.id));
+          optionUsers.forEach((u: any) => {
+            if (!existingIds.has(u.id)) {
+              fetchedMembers.push(u);
+              existingIds.add(u.id);
+            }
+          });
+          gvgResults = optionUsers.map((u: any) => u.id);
+        }
+      }
+
+      // Batch fetch profiles to avoid N+1 requests
+      const namesToFetch = fetchedMembers.map((m: any) => m.name);
+      let profilesMap = new Map();
+      
+      try {
+        const profilesRes = await fetch(`/api/member-profiles/${groupID}/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ names: namesToFetch })
+        });
+        
+        if (profilesRes.ok) {
+          const profiles = await profilesRes.json();
+          if (Array.isArray(profiles)) {
+            profiles.forEach((p: any) => {
+              if (p && p.name) {
+                profilesMap.set(p.name.toLowerCase(), p);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch batch profiles:', e);
+      }
+
+      const membersWithProfiles = fetchedMembers.map((m: any) => {
+        const profile = profilesMap.get(m.name.toLowerCase());
+        if (profile) {
+          const { id, name, avatar, ...restProfile } = profile;
+          return { ...m, ...restProfile };
+        }
+        return m;
+      });
+
+      const newMembersDataMap = new Map();
+      membersWithProfiles.forEach((dm: any) => {
+        const config = memberConfigs[dm.id] || {};
+        
+        const primaryWeapon1 = dm.primaryWeapon1 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon1Id) || WEAPONS.NONE;
+        const primaryWeapon2 = dm.primaryWeapon2 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon2Id) || WEAPONS.NONE;
+        const secondaryWeapons = dm.secondaryWeapons || (config.secondaryWeaponIds || []).map((id: string) => Object.values(WEAPONS).find(w => w.id === id)).filter(Boolean);
+        const rank = dm.rank || Object.values(RANKS).find(r => r.id === config.rankId) || Object.values(RANKS)[0];
+
+        let participationStatus = dm.participationStatus || 'confirmed';
+        if (source === 'poll' && pollResults) {
+          if (pollResults.backup.includes(dm.id)) {
+            participationStatus = 'backup';
+          } else if (pollResults.continue.includes(dm.id)) {
+            participationStatus = 'confirmed';
+          } else {
+            participationStatus = 'none';
+          }
+        }
+
+        newMembersDataMap.set(dm.id, {
+          id: dm.id,
+          name: normalizeDiscordName(dm.name),
+          avatar: dm.avatar,
+          ingameName: dm.ingameName || config.ingameName || '',
+          ingameId: dm.ingameId || config.ingameId || '',
+          role: dm.role || config.role || '',
+          position: dm.position || config.position || '',
+          positions: dm.positions || config.positions || [],
+          primaryWeapon1,
+          primaryWeapon2,
+          secondaryWeapons,
+          secondaryWeapon1: dm.secondaryWeapon1 || WEAPONS.NONE,
+          secondaryWeapon2: dm.secondaryWeapon2 || WEAPONS.NONE,
+          stats: dm.stats || config.stats,
+          rank,
+          registration: dm.registration || 'none',
+          participationStatus,
+          note: dm.note || config.note || '',
+          source: source,
+          type: dm.type || config.type || 0,
+          matchStats: dm.matchStats || config.matchStats || {
+            League: { Win: 0, Lose: 0 },
+            Rated: { Win: 0, Lose: 0 },
+            Scrim: { Win: 0, Lose: 0 }
+          }
+        });
+      });
+
+      // 1. Update metadata for members ALREADY in teams (keep them updated)
+      setAreas(prevAreas => prevAreas.map(area => ({
+        ...area,
+        teams: area.teams.map(team => ({
+          ...team,
+          members: team.members.map(m => {
+            const newData = newMembersDataMap.get(m.id);
+            return newData ? { ...m, ...newData } : m;
+          })
+        }))
+      })));
+
+      // 2. Set unassigned members to ALL fetched members
+      const newUnassigned: Member[] = [];
+      newMembersDataMap.forEach((data, id) => {
+        if (source === 'poll' && data.participationStatus === 'none') {
+          return;
+        }
+        if (source === 'gvg' && gvgResults && !gvgResults.includes(id)) {
+          return;
+        }
+        newUnassigned.push({
+          id,
+          ...data,
+          status: 'online',
+          isConfirmed: false
+        });
+      });
+
+      setUnassignedMembers(newUnassigned);
+      setLastRefreshedSource(source);
+    } catch (error: any) {
+      console.error('Refresh members error:', error);
+      if (showToast) {
+        showToast(error.message || 'Lỗi khi lấy danh sách thành viên', 'error');
+      }
+    }
+  };
+
+  const clearUnassignedMembers = () => {
+    setUnassignedMembers([]);
+  };
+  
+  const handleDeleteCustomMember = async (memberId: string) => {
+    try {
+      const res = await fetch(`/api/custom-members/${groupID}/${memberId}`, { method: 'DELETE' });
+      if (res.ok) {
+        // Remove from unassigned
+        setUnassignedMembers(prev => prev.filter(m => m.id !== memberId));
+        // Remove from all teams
+        setAreas(prev => prev.map(a => ({
+          ...a,
+          teams: a.teams.map(t => ({
+            ...t,
+            members: t.members.filter(m => m.id !== memberId)
+          }))
+        })));
+
+      } else {
+        console.error('Failed to delete member:', await res.text());
+      }
+    } catch (e) {
+      console.error('Error in handleDeleteCustomMember:', e);
+    }
+  };
+
+  const [isCheckingOnline, setIsCheckingOnline] = useState(false);
+
+  const handleCheckOnline = async () => {
+    setIsCheckingOnline(true);
+    try {
+      const unassignedIds = new Set(unassignedMembers.map(m => m.id));
+
+      const newAreas = areas.map(area => ({
+        ...area,
+        teams: area.teams.map(team => ({
+          ...team,
+          members: team.members.map(m => ({
+            ...m,
+            status: unassignedIds.has(m.id) ? 'online' : 'offline'
+          }))
+        }))
+      }));
+
+      setAreas(newAreas);
+      return newAreas;
+
+    } catch (error: any) {
+      console.error('Check online error:', error);
+      return areas;
+    } finally {
+      setIsCheckingOnline(false);
+    }
+  };
+
+  const handleConfirmMatchResult = async (type: 'League' | 'Rated' | 'Scrim', result: 'Win' | 'Lose') => {
+    const membersToUpdate: Member[] = [];
+    areas.forEach(area => {
+      area.teams.forEach(team => {
+        team.members.forEach(member => {
+          membersToUpdate.push(member);
+        });
+      });
+    });
+
+    if (membersToUpdate.length === 0) return;
+
+    const updatedMembers = membersToUpdate.map(m => {
+      const currentStats = m.matchStats || {
+        League: { Win: 0, Lose: 0 },
+        Rated: { Win: 0, Lose: 0 },
+        Scrim: { Win: 0, Lose: 0 }
+      };
+      return {
+        ...m,
+        matchStats: {
+          ...currentStats,
+          [type]: {
+            ...currentStats[type],
+            [result]: currentStats[type][result] + 1
+          }
+        }
+      };
+    });
+
+    setAreas(prev => prev.map(area => ({
+      ...area,
+      teams: area.teams.map(team => ({
+        ...team,
+        members: team.members.map(m => {
+          const updated = updatedMembers.find(um => um.id === m.id);
+          return updated || m;
+        })
+      }))
+    })));
+
+    try {
+      const response = await fetch(`/api/members-config/${groupID}`);
+      if (!response.ok) throw new Error('Failed to load member configs');
+      const contentType = response.headers.get('content-type');
+      const configs = (contentType && contentType.includes('application/json')) ? await response.json() : {};
+      
+      updatedMembers.forEach(localMember => {
+        configs[localMember.id] = {
+          role: localMember.role,
+          position: localMember.position,
+          primaryWeapon1Id: localMember.primaryWeapon1.id,
+          primaryWeapon2Id: localMember.primaryWeapon2.id,
+          secondaryWeaponIds: localMember.secondaryWeapons.map(w => w.id),
+          rankId: localMember.rank.id,
+          note: localMember.note,
+          stats: localMember.stats,
+          matchStats: localMember.matchStats,
+          type: localMember.type
+        };
+      });
+
+      await fetch(`/api/members-config/${groupID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configs)
+      });
+    } catch (error) {
+      console.error("Failed to save match results:", error);
+      if (showToast) showToast(t('setup.confirmResultError'), 'error');
+      throw error;
+    }
+  };
+
+  const handleUpdateMember = async (updatedMember: Member) => {
+    handleUpdateUnassignedMember(updatedMember);
+    handleUpdateSetupMember(updatedMember);
+  };
+
+  return {
+    unassignedMembers,
+    setUnassignedMembers,
+    areas,
+    setAreas,
+    savedSetups,
+    setSavedSetups,
+    isSetupDropdownOpen,
+    setIsSetupDropdownOpen,
+    currentSetupName,
+    setCurrentSetupName,
+    currentSetupId,
+    setCurrentSetupId,
+    selectedTeamId,
+    setSelectedTeamId,
+    memberSource,
+    setMemberSource,
+    lastRefreshedSource,
+    isCheckingOnline,
+    handleCheckOnline,
+    activePoll,
+    activeGvgPoll,
+    handleCreatePoll,
+    handleCreateGvGPoll,
+    handleClosePoll,
+    handleCloseGvgPoll,
+    handleAddArea,
+    handleDeleteArea,
+    handleRenameArea,
+    handleAddTeam,
+    handleDeleteTeam,
+    handleRenameTeam,
+    handleUpdateUnassignedMember,
+    handleUpdateSetupMember,
+    handleUpdateMember,
+    handleConfirmAllAssigned,
+    handleClearTeamMembers,
+    handleClearAreaMembers,
+    handleMoveMember,
+    handleMoveTeam,
+    handleRemoveFromTeam,
+    handleAddToSelectedTeam,
+    handleSaveTeamSettings,
+    handleConfirmSave,
+    handleCreateNewSetup,
+    handleLoadSetup,
+    handleDeleteSetup,
+    handleCopySetup,
+    refreshMembers,
+    clearUnassignedMembers,
+    handleDeleteCustomMember,
+    gvgPollOptions,
+    setGvgPollOptions,
+    gvgOptionIndex,
+    setGvgOptionIndex,
+    handleConfirmMatchResult
+  };
+}

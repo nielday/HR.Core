@@ -1,0 +1,843 @@
+import React, { useMemo, useState, useEffect } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { useTeamManager, useFilters, useModals } from '../controllers';
+import { Member, DiscordConfig } from '../models';
+import { isTowerArea, isPVPArea, normalizeDiscordName } from '../utils';
+import { useTranslation } from 'react-i18next';
+import {
+  AppHeader,
+  UnassignedSidebar,
+  SetupManagement,
+  AreaGrid,
+  GlobalStatsPanel,
+  FilterSearchModal,
+  MemberStatsModal,
+  TeamSettingsModal,
+  DiscordConfigModal,
+  AddMemberModal,
+  MemberStatsOverviewModal,
+  Login,
+  Toast,
+  ToastType,
+  PublicView,
+  MemberUpdate,
+  TacticalBoardModal
+} from '.';
+
+export default function App() {
+  const { t } = useTranslation();
+  // Routing logic
+  const path = window.location.pathname;
+  const searchParams = new URLSearchParams(window.location.search);
+  const setupId = searchParams.get('id');
+  const groupIdFromUrl = searchParams.get('group');
+
+  // Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('isLoggedIn') === 'true';
+  });
+  const [userGroup, setUserGroup] = useState(() => {
+    return groupIdFromUrl || localStorage.getItem('userGroup') || '';
+  });
+  const [username, setUsername] = useState(() => {
+    return localStorage.getItem('username') || '';
+  });
+  const [userRole, setUserRole] = useState<number>(() => {
+    return parseInt(localStorage.getItem('userRole') || '0', 10);
+  });
+
+  // Discord Connection State
+  const [isConnected, setIsConnected] = useState(false);
+  const [isInitialStatusChecked, setIsInitialStatusChecked] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [tacticalBoardSetup, setTacticalBoardSetup] = useState<{ id: string; name: string } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) {
+      const authenticate = async () => {
+        try {
+          const response = await fetch('/api/discord-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            handleLogin(data.groupID, data.username, data.rule || 0);
+            // Remove token from URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setToast({ message: t('toasts.welcome', { username: data.username, groupId: data.groupID }), type: 'success' });
+          } else if (!isLoggedIn) {
+            const error = await response.json();
+            setToast({ message: error.error || t('toasts.loginFailed'), type: 'error' });
+          }
+        } catch (error) {
+          if (!isLoggedIn) {
+            setToast({ message: t('toasts.connectionError'), type: 'error' });
+          }
+        }
+      };
+      authenticate();
+    }
+  }, [t]);
+
+  const showToast = (message: string, type: ToastType = 'info') => {
+    setToast({ message, type });
+  };
+
+  const teamManager = useTeamManager(isConnected, userGroup, username, showToast);
+  const filters = useFilters();
+  const modals = useModals();
+
+  const handleLogin = (groupID: string, username: string, rule: number) => {
+    setIsLoggedIn(true);
+    setUserGroup(groupID);
+    setUsername(username);
+    setUserRole(rule);
+    localStorage.setItem('isLoggedIn', 'true');
+    localStorage.setItem('userGroup', groupID);
+    localStorage.setItem('username', username);
+    localStorage.setItem('userRole', rule.toString());
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUserGroup('');
+    setUsername('');
+    setUserRole(0);
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('userGroup');
+    localStorage.removeItem('username');
+    localStorage.removeItem('userRole');
+  };
+
+  const {
+    areas,
+    unassignedMembers,
+    handleMoveMember,
+    handleMoveTeam,
+    handleAddToSelectedTeam,
+    handleUpdateMember,
+    handleSaveTeamSettings,
+    selectedTeamId,
+    setSelectedTeamId,
+    refreshMembers,
+    clearUnassignedMembers
+  } = teamManager;
+
+  const {
+    isSearchActive,
+    isGlobalFilterActive,
+    searchQuery,
+    selectedRoles,
+    selectedWeapons,
+    selectedRanks,
+    selectedPositions,
+    selectedParticipation,
+    weaponSlotFilter,
+    globalFilterRoles,
+    globalFilterWeapons,
+    globalFilterRanks,
+    globalFilterPositions,
+    globalFilterStatus,
+    setGlobalFilterStatus,
+    isUnassignedOnly,
+    setIsUnassignedOnly,
+    handleClearFilters,
+    setIsFilterOpen,
+    handleSearch,
+    setGlobalFilterRoles,
+    setGlobalFilterWeapons,
+    setGlobalFilterRanks,
+    setGlobalFilterPositions,
+    setWeaponSlotFilter
+  } = filters;
+
+  // Render Public View if on /view path
+  if (path === '/view' && setupId) {
+    return <PublicView setupId={setupId} groupId={groupIdFromUrl || '1'} />;
+  }
+
+  if (path === '/update') {
+    return <MemberUpdate />;
+  }
+
+  const {
+    selectedMemberId,
+    setSelectedMemberId,
+    setSelectedMember,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    isDiscordModalOpen,
+    setIsDiscordModalOpen,
+    isAddMemberModalOpen,
+    setIsAddMemberModalOpen
+  } = modals;
+
+  const checkStatus = async () => {
+    if (!isLoggedIn || !userGroup) return;
+    try {
+      const res = await fetch(`/api/status/${userGroup}`);
+      if (!res.ok) return;
+      
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) return;
+
+      const data = await res.json();
+      const newConnected = data.connected;
+      
+      setIsConnected(prev => {
+        if (prev && !newConnected) {
+          clearUnassignedMembers();
+        }
+        return newConnected;
+      });
+      setIsInitialStatusChecked(true);
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Background status check failed');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    let isMounted = true;
+    let timeoutId: any;
+
+    const poll = async () => {
+      await checkStatus();
+      if (isMounted) {
+        timeoutId = setTimeout(poll, 10000);
+      }
+    };
+
+    poll();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [isLoggedIn]);
+
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [discordConfig, setDiscordConfig] = useState<DiscordConfig | null>(null);
+
+  const fetchDiscordConfig = () => {
+    if (userGroup) {
+      fetch(`/api/bot-config/${userGroup}`)
+        .then(res => res.json())
+        .then(data => {
+          setDiscordConfig(data);
+          if (data.channelId) {
+            setSelectedChannelId(data.channelId);
+          }
+        })
+        .catch(err => console.error('Failed to load discord config:', err));
+    }
+  };
+
+  useEffect(() => {
+    fetchDiscordConfig();
+  }, [userGroup]);
+
+  const handleConnect = async () => {
+    if (!userGroup) return;
+    setIsConnecting(true);
+    try {
+      // If connecting, we only want to update the channelId on the server
+      if (!isConnected && selectedChannelId) {
+        await fetch(`/api/bot-config/${userGroup}/channel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelId: selectedChannelId })
+        });
+        
+        // Update local config state if it exists
+        if (discordConfig) {
+          setDiscordConfig({ ...discordConfig, channelId: selectedChannelId });
+        }
+      }
+
+      const endpoint = isConnected ? `/api/disconnect/${userGroup}` : `/api/connect/${userGroup}`;
+      const res = await fetch(endpoint, { method: 'POST' });
+      if (res.ok) {
+        if (isConnected) {
+          clearUnassignedMembers();
+        }
+        setIsConnected(!isConnected);
+      } else {
+        const data = await res.json();
+        showToast(data.error || t('toasts.actionFailed'), 'error');
+      }
+    } catch (err) {
+      console.error('Failed to toggle connection:', err);
+      showToast(t('toasts.connectionError'), 'error');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleRefresh = async (source?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string) => {
+    const currentSource = source || teamManager.memberSource;
+    if (currentSource === 'discord' && !isConnected) {
+      showToast(t('toasts.connectBotFirst'), 'error');
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      await refreshMembers(source, gvgIndex, channelId || selectedChannelId);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleChannelChange = async (id: string) => {
+    setSelectedChannelId(id);
+    
+    // Update local config state if it exists
+    if (discordConfig) {
+      setDiscordConfig({ ...discordConfig, channelId: id });
+    }
+
+    // Persist to server if we have a group
+    if (userGroup) {
+      try {
+        await fetch(`/api/bot-config/${userGroup}/channel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelId: id })
+        });
+      } catch (err) {
+        console.error('Failed to update channel on server:', err);
+      }
+    }
+  };
+
+  const normalizeString = (str: string | undefined | null) => {
+    if (!str) return '';
+    return normalizeDiscordName(str)
+      .normalize('NFKD') // Decompose fancy fonts and diacritics
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .toLowerCase()
+      .replace(/[đĐ]/g, 'd')
+      .replace(/[^a-z0-9\s]/g, '') // Remove non-latin/non-alphanumeric characters (keeps spaces)
+      .replace(/\s+/g, ' ') // Collapse multiple spaces
+      .trim();
+  };
+
+  const isMemberMatching = (m: Member) => {
+    if (!isSearchActive) return true;
+    
+    // Search by name, ingame name, or position: case-insensitive, partial match, normalized for Vietnamese accents
+    const normalizedQuery = normalizeString(searchQuery);
+    const normalizedName = normalizeString(m.name);
+    const normalizedIngameName = normalizeString(m.ingameName);
+    const normalizedPosition = normalizeString(m.position);
+    const matchesSearch = normalizedQuery === '' || 
+      normalizedName.includes(normalizedQuery) || 
+      normalizedIngameName.includes(normalizedQuery) ||
+      normalizedPosition.includes(normalizedQuery);
+    
+    // Role filter: Check if the custom role string matches any of the selected role names
+    const matchesRole = selectedRoles.length === 0 || 
+      selectedRoles.includes(m.role);
+
+    const matchesWeapon = selectedWeapons.length === 0 || (() => {
+      const hasPrimary1 = m.primaryWeapon1?.id && m.primaryWeapon1.id !== 'w0';
+      const hasPrimary2 = m.primaryWeapon2?.id && m.primaryWeapon2.id !== 'w0';
+      const hasNoWeapon = !hasPrimary1 && !hasPrimary2;
+      
+      if (selectedWeapons.includes('w0') && hasNoWeapon) return true;
+      
+      const mWeapons: string[] = [];
+      if (weaponSlotFilter.primary) {
+        if (hasPrimary1) mWeapons.push(m.primaryWeapon1.id);
+        if (hasPrimary2) mWeapons.push(m.primaryWeapon2.id);
+      }
+      if (weaponSlotFilter.secondary) {
+        m.secondaryWeapons.forEach(sw => {
+          if (sw.id && sw.id !== 'w0') mWeapons.push(sw.id);
+        });
+      }
+      return selectedWeapons.some(id => mWeapons.includes(id));
+    })();
+
+    const matchesRank = selectedRanks.length === 0 ||
+      (m.rank && selectedRanks.includes(m.rank.id));
+    
+    const matchesPosition = selectedPositions.length === 0 ||
+      (m.position && selectedPositions.some(posId => {
+        const normalizedPos = normalizeString(m.position);
+        if (posId === 'pos_cong') return normalizedPos === 'cong' || normalizedPos === 'poscong';
+        if (posId === 'pos_thu') return normalizedPos === 'thu' || normalizedPos === 'posthu';
+        if (posId === 'pos_flex') return normalizedPos === 'flex' || normalizedPos === 'posflex';
+        return false;
+      }));
+
+    const matchesParticipation = selectedParticipation.length === 0 ||
+      (m.participationStatus && selectedParticipation.includes(m.participationStatus));
+      
+    const isAssigned = memberTeamMap.has(m.id);
+    const matchesUnassigned = !isUnassignedOnly || !isAssigned;
+      
+    return matchesSearch && matchesRole && matchesWeapon && matchesRank && matchesPosition && matchesParticipation && matchesUnassigned;
+  };
+
+  const isMemberMatchingGlobal = (m: Member) => {
+    const matchesGlobalRole = globalFilterRoles.length === 0 || 
+      globalFilterRoles.includes(m.role);
+
+    const matchesGlobalWeapon = globalFilterWeapons.length === 0 || (() => {
+      const hasPrimary1 = m.primaryWeapon1?.id && m.primaryWeapon1.id !== 'w0';
+      const hasPrimary2 = m.primaryWeapon2?.id && m.primaryWeapon2.id !== 'w0';
+      const hasNoWeapon = !hasPrimary1 && !hasPrimary2;
+      
+      if (globalFilterWeapons.includes('w0') && hasNoWeapon) return true;
+      
+      const mWeapons: string[] = [];
+      if (weaponSlotFilter.primary) {
+        if (hasPrimary1) mWeapons.push(m.primaryWeapon1.id);
+        if (hasPrimary2) mWeapons.push(m.primaryWeapon2.id);
+      }
+      if (weaponSlotFilter.secondary) {
+        m.secondaryWeapons.forEach(sw => {
+          if (sw.id && sw.id !== 'w0') mWeapons.push(sw.id);
+        });
+      }
+      return globalFilterWeapons.some(id => mWeapons.includes(id));
+    })();
+
+    const matchesGlobalRank = globalFilterRanks.length === 0 ||
+      (m.rank && globalFilterRanks.includes(m.rank.id));
+    const matchesGlobalPosition = globalFilterPositions.length === 0 ||
+      (m.position && globalFilterPositions.some(posId => {
+        const normalizedPos = normalizeString(m.position);
+        if (posId === 'pos_cong') return normalizedPos === 'cong' || normalizedPos === 'poscong';
+        if (posId === 'pos_thu') return normalizedPos === 'thu' || normalizedPos === 'posthu';
+        if (posId === 'pos_flex') return normalizedPos === 'flex' || normalizedPos === 'posflex';
+        return false;
+      }));
+      
+    const memberStatus = m.status === 'in-game' ? 'online' : (m.status || 'offline');
+    const matchesGlobalStatus = filters.globalFilterStatus.length === 0 ||
+      filters.globalFilterStatus.includes(memberStatus);
+
+    return matchesGlobalRole && matchesGlobalWeapon && matchesGlobalRank && matchesGlobalPosition && matchesGlobalStatus;
+  };
+
+  const memberTeamMap = useMemo(() => {
+    const map = new Map<string, { teamId: string, teamName: string, areaName: string }>();
+    
+    areas.forEach(area => {
+      const isSpecial = isTowerArea(area.name) || isPVPArea(area.name);
+      area.teams.forEach(team => {
+        team.members.forEach(m => {
+          const existing = map.get(m.id);
+          // Prioritize Normal team over Special team for display in sidebar
+          if (!existing || (!isSpecial && (isTowerArea(existing.areaName) || isPVPArea(existing.areaName)))) {
+            map.set(m.id, { teamId: team.id, teamName: team.name, areaName: area.name });
+          }
+        });
+      });
+    });
+    return map;
+  }, [areas]);
+
+  const memberAllTeamIds = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    areas.forEach(area => {
+      area.teams.forEach(team => {
+        team.members.forEach(m => {
+          if (!map.has(m.id)) {
+            map.set(m.id, new Set());
+          }
+          map.get(m.id)!.add(team.id);
+        });
+      });
+    });
+    return map;
+  }, [areas]);
+
+  const totalAssignedMembers = useMemo(() => {
+    const uniqueIds = new Set<string>();
+    areas.forEach(area => {
+      area.teams.forEach(team => {
+        team.members.forEach(m => uniqueIds.add(m.id));
+      });
+    });
+    return uniqueIds.size;
+  }, [areas]);
+
+  const filteredUnassignedByStatus = useMemo(() => {
+    return unassignedMembers.filter(m => m.status === 'online');
+  }, [unassignedMembers]);
+
+  const totalMatchingUnassigned = useMemo(() => 
+    filteredUnassignedByStatus.filter(m => isMemberMatching(m) && isMemberMatchingGlobal(m)).length
+  , [filteredUnassignedByStatus, isMemberMatching, isMemberMatchingGlobal]);
+
+  const totalMatchingMembers = useMemo(() => {
+    const uniqueMatchingIds = new Set<string>();
+    
+    // Count unassigned matching members
+    filteredUnassignedByStatus.forEach(m => {
+      if (isMemberMatching(m) && isMemberMatchingGlobal(m)) {
+        uniqueMatchingIds.add(m.id);
+      }
+    });
+
+    // Count assigned matching members
+    areas.forEach(area => {
+      area.teams.forEach(team => {
+        team.members.forEach(m => {
+          if (isMemberMatching(m) && isMemberMatchingGlobal(m)) {
+            uniqueMatchingIds.add(m.id);
+          }
+        });
+      });
+    });
+
+    return uniqueMatchingIds.size;
+  }, [areas, filteredUnassignedByStatus, isMemberMatching, isMemberMatchingGlobal]);
+
+  const sortedUnassigned = useMemo(() => {
+    return [...filteredUnassignedByStatus].sort((a, b) => {
+      const aBackup = a.participationStatus === 'backup';
+      const bBackup = b.participationStatus === 'backup';
+      if (!aBackup && bBackup) return -1;
+      if (aBackup && !bBackup) return 1;
+
+      if (isSearchActive) {
+        const aMatch = isMemberMatching(a);
+        const bMatch = isMemberMatching(b);
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+      }
+
+      return 0;
+    });
+  }, [filteredUnassignedByStatus, isSearchActive, isMemberMatching]);
+
+  const selectedTeamIdArea = teamManager.areas.find(a => a.teams.some(t => t.id === selectedTeamId));
+  const isSelectedTeamIdSpecial = selectedTeamIdArea ? (selectedTeamIdArea.name.toLowerCase().includes('pvp') || selectedTeamIdArea.name.toLowerCase().includes('trụ')) : false;
+
+  const handleCreateNewSetupWithExpand = () => {
+    teamManager.handleCreateNewSetup();
+    filters.setForceExpandAll(true);
+    setTimeout(() => {
+      filters.setForceExpandAll(undefined);
+    }, 100);
+  };
+
+  const handleLoadSetupWithExpand = async (setup: any) => {
+    await teamManager.handleLoadSetup(setup);
+    filters.setForceExpandAll(true);
+    setTimeout(() => {
+      filters.setForceExpandAll(undefined);
+    }, 100);
+  };
+
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  const handleOpenStatsModal = (members: Member[], title: string | null = null) => {
+    modals.setStatsModalMembers(members);
+    modals.setStatsModalTitle(title);
+    modals.setIsStatsModalOpen(true);
+  };
+
+  return (
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#313338] font-sans text-[#DBDEE1]">
+      <AppHeader 
+        totalAssignedMembers={totalAssignedMembers} 
+        totalMembers={filteredUnassignedByStatus.length} 
+        onConfirmAllAssigned={teamManager.handleConfirmAllAssigned}
+        isConnected={isConnected}
+        isInitialStatusChecked={isInitialStatusChecked}
+        isConnecting={isConnecting}
+        onConnect={handleConnect}
+        onOpenDiscordConfig={() => {
+          setIsLoadingConfig(true);
+          setIsDiscordModalOpen(true);
+          setTimeout(() => setIsLoadingConfig(false), 500);
+        }}
+        isLoadingConfig={isLoadingConfig}
+        discordChannels={discordConfig?.channels || []}
+        selectedChannelId={selectedChannelId}
+        onChannelChange={handleChannelChange}
+        username={username}
+        userGroup={userGroup}
+        userRole={userRole}
+        onLogout={handleLogout}
+        activePoll={teamManager.activePoll}
+        activeGvgPoll={teamManager.activeGvgPoll}
+        handleCreatePoll={(data) => teamManager.handleCreatePoll({ ...data, channelId: selectedChannelId })}
+        handleCreateGvGPoll={(data) => teamManager.handleCreateGvGPoll({ ...data, channelId: selectedChannelId })}
+        handleClosePoll={teamManager.handleClosePoll}
+        handleCloseGvgPoll={teamManager.handleCloseGvgPoll}
+        showToast={showToast}
+      />
+
+      <div className="z-20 flex flex-1 overflow-hidden relative p-6">
+        <UnassignedSidebar 
+          isSidebarOpen={isSidebarOpen}
+          setIsSidebarOpen={setIsSidebarOpen}
+          isSearchActive={isSearchActive}
+          isGlobalFilterActive={isGlobalFilterActive}
+          totalMatchingUnassigned={totalMatchingUnassigned}
+          filteredUnassignedByStatus={filteredUnassignedByStatus}
+          sortedUnassigned={sortedUnassigned}
+          selectedMemberId={selectedMemberId}
+          isMemberMatching={isMemberMatching}
+          isMemberMatchingGlobal={isMemberMatchingGlobal}
+          memberTeamMap={memberTeamMap}
+          memberAllTeamIds={memberAllTeamIds}
+          setSelectedMemberId={setSelectedMemberId}
+          setSelectedMember={setSelectedMember}
+          selectedTeamId={selectedTeamId}
+          handleAddToSelectedTeam={handleAddToSelectedTeam}
+          handleMoveMember={handleMoveMember}
+          handleMoveTeam={handleMoveTeam}
+          handleRemoveFromTeam={teamManager.handleRemoveFromTeam}
+          isConnected={isConnected}
+          isRefreshing={isRefreshing}
+          onRefreshMembers={handleRefresh}
+          onOpenFilter={() => filters.setIsFilterOpen(true)}
+          onClearFilters={handleClearFilters}
+          memberSource={teamManager.memberSource}
+          lastRefreshedSource={teamManager.lastRefreshedSource}
+          setMemberSource={teamManager.setMemberSource}
+          onAddMember={() => setIsAddMemberModalOpen(true)}
+          onDeleteCustomMember={teamManager.handleDeleteCustomMember}
+          activePoll={teamManager.activePoll}
+          isSelectedTeamSpecial={isSelectedTeamIdSpecial}
+          gvgPollOptions={teamManager.gvgPollOptions}
+          gvgOptionIndex={teamManager.gvgOptionIndex}
+          setGvgOptionIndex={teamManager.setGvgOptionIndex}
+          isInitialStatusChecked={isInitialStatusChecked}
+          isStatsModalOpen={modals.isStatsModalOpen}
+          setIsStatsModalOpen={(open) => {
+            if (open) {
+              handleOpenStatsModal(sortedUnassigned, t('stats.memberStats'));
+            } else {
+              modals.setIsStatsModalOpen(false);
+            }
+          }}
+        />
+
+        <div className="flex-1 flex flex-col gap-6 min-w-0 overflow-hidden">
+          <SetupManagement 
+            currentSetupName={teamManager.currentSetupName}
+            setCurrentSetupName={teamManager.setCurrentSetupName}
+            isEditingSetupName={modals.isEditingSetupName}
+            setIsEditingSetupName={modals.setIsEditingSetupName}
+            tempSetupName={modals.tempSetupName}
+            setTempSetupName={modals.setTempSetupName}
+            handleCreateNewSetup={handleCreateNewSetupWithExpand}
+            handleConfirmSave={teamManager.handleConfirmSave}
+            isSetupDropdownOpen={teamManager.isSetupDropdownOpen}
+            setIsSetupDropdownOpen={teamManager.setIsSetupDropdownOpen}
+            savedSetups={teamManager.savedSetups}
+            handleLoadSetup={handleLoadSetupWithExpand}
+            handleDeleteSetup={teamManager.handleDeleteSetup}
+            handleCopySetup={teamManager.handleCopySetup}
+            handleCheckOnline={teamManager.handleCheckOnline}
+            isCheckingOnline={teamManager.isCheckingOnline}
+            onConfirmMatchResult={teamManager.handleConfirmMatchResult}
+            isConnected={isConnected}
+            areas={areas}
+            showToast={showToast}
+            currentSetupId={teamManager.currentSetupId}
+            groupId={userGroup}
+            selectedChannelId={selectedChannelId}
+            onOpenTacticalBoard={(id, name) => setTacticalBoardSetup({ id, name })}
+          />
+
+          <div className="custom-scrollbar flex-1 overflow-y-auto bg-[#313338] flex flex-col gap-6 pr-2">          
+            <GlobalStatsPanel 
+              areas={areas}
+              globalFilterRoles={globalFilterRoles}
+              setGlobalFilterRoles={filters.setGlobalFilterRoles}
+              globalFilterWeapons={globalFilterWeapons}
+              setGlobalFilterWeapons={filters.setGlobalFilterWeapons}
+              globalFilterRanks={globalFilterRanks}
+              setGlobalFilterRanks={filters.setGlobalFilterRanks}
+              globalFilterPositions={globalFilterPositions}
+              setGlobalFilterPositions={filters.setGlobalFilterPositions}
+              globalFilterStatus={filters.globalFilterStatus}
+              setGlobalFilterStatus={filters.setGlobalFilterStatus}
+              weaponSlotFilter={weaponSlotFilter}
+              setWeaponSlotFilter={filters.setWeaponSlotFilter}
+            />
+
+            <AreaGrid 
+              areas={areas}
+              isSearchActive={isSearchActive}
+              isGlobalFilterActive={isGlobalFilterActive}
+              isMemberMatching={isMemberMatching}
+              isMemberMatchingGlobal={isMemberMatchingGlobal}
+              forceExpandAll={filters.forceExpandAll}
+              editingAreaId={modals.editingAreaId}
+              setEditingAreaId={modals.setEditingAreaId}
+              tempAreaName={modals.tempAreaName}
+              setTempAreaName={modals.setTempAreaName}
+              handleRenameArea={teamManager.handleRenameArea}
+              handleAddTeam={teamManager.handleAddTeam}
+              handleClearAreaMembers={teamManager.handleClearAreaMembers}
+              handleDeleteArea={teamManager.handleDeleteArea}
+              handleMoveMember={handleMoveMember}
+              handleMoveTeam={handleMoveTeam}
+              handleRenameTeam={teamManager.handleRenameTeam}
+              handleDeleteTeam={teamManager.handleDeleteTeam}
+              setSettingsTeam={modals.setSettingsTeam}
+              handleClearTeamMembers={teamManager.handleClearTeamMembers}
+              selectedTeamId={selectedTeamId}
+              setSelectedTeamId={setSelectedTeamId}
+              selectedMemberId={selectedMemberId}
+              setSelectedMemberId={setSelectedMemberId}
+              setSelectedMember={setSelectedMember}
+              handleRemoveFromTeam={teamManager.handleRemoveFromTeam}
+              handleAddArea={teamManager.handleAddArea}
+              onOpenStatsModal={handleOpenStatsModal}
+              memberSource={teamManager.memberSource}
+              onDeleteCustomMember={teamManager.handleDeleteCustomMember}
+              globalFilterRoles={filters.globalFilterRoles}
+              setGlobalFilterRoles={filters.setGlobalFilterRoles}
+              globalFilterWeapons={filters.globalFilterWeapons}
+              setGlobalFilterWeapons={filters.setGlobalFilterWeapons}
+              globalFilterRanks={filters.globalFilterRanks}
+              setGlobalFilterRanks={filters.setGlobalFilterRanks}
+              weaponSlotFilter={weaponSlotFilter}
+              setWeaponSlotFilter={filters.setWeaponSlotFilter}
+            />
+          </div>
+        </div>
+      </div>
+
+      <FilterSearchModal 
+        isFilterOpen={filters.isFilterOpen}
+        setIsFilterOpen={filters.setIsFilterOpen}
+        isSearchActive={isSearchActive}
+        totalMatchingMembers={totalMatchingMembers}
+        handleClearFilters={handleClearFilters}
+        searchQuery={filters.searchQuery}
+        setSearchQuery={filters.setSearchQuery}
+        handleSearch={handleSearch}
+        selectedRoles={filters.selectedRoles}
+        setSelectedRoles={filters.setSelectedRoles}
+        selectedWeapons={filters.selectedWeapons}
+        setSelectedWeapons={filters.setSelectedWeapons}
+        weaponSlotFilter={weaponSlotFilter}
+        setWeaponSlotFilter={filters.setWeaponSlotFilter}
+        selectedRanks={filters.selectedRanks}
+        setSelectedRanks={filters.setSelectedRanks}
+        selectedPositions={filters.selectedPositions}
+        setSelectedPositions={filters.setSelectedPositions}
+        isUnassignedOnly={filters.isUnassignedOnly}
+        setIsUnassignedOnly={filters.setIsUnassignedOnly}
+      />
+
+      <AddMemberModal
+        isOpen={isAddMemberModalOpen}
+        onClose={() => setIsAddMemberModalOpen(false)}
+        groupID={userGroup}
+        showToast={showToast}
+        onAdd={async (member) => {
+          try {
+            const res = await fetch(`/api/custom-members/${userGroup}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(member)
+            });
+            if (res.ok) {
+              setIsAddMemberModalOpen(false);
+              teamManager.refreshMembers();
+              showToast(t('toasts.addMemberSuccess'), 'success');
+            } else {
+              showToast(t('toasts.saveMemberError'), 'error');
+            }
+          } catch (e) {
+            console.error(e);
+            showToast(t('toasts.saveMemberError'), 'error');
+          }
+        }}
+      />
+
+      {modals.selectedMember && (
+        <MemberStatsModal 
+          member={modals.selectedMember} 
+          onClose={() => modals.setSelectedMember(null)} 
+          onUpdate={(updatedMember) => {
+            teamManager.handleUpdateMember(updatedMember);
+            modals.setStatsModalMembers(prev => prev.map(m => m.id === updatedMember.id ? updatedMember : m));
+          }}
+          groupID={userGroup}
+          showToast={showToast}
+        />
+      )}
+
+      {modals.settingsTeam && (
+        <TeamSettingsModal 
+          team={modals.settingsTeam} 
+          onClose={() => modals.setSettingsTeam(null)} 
+          onSave={handleSaveTeamSettings}
+          showToast={showToast}
+        />
+      )}
+
+      {modals.isStatsModalOpen && (
+        <MemberStatsOverviewModal 
+          isOpen={modals.isStatsModalOpen}
+          onClose={() => modals.setIsStatsModalOpen(false)}
+          members={modals.statsModalMembers}
+          memberTeamMap={memberTeamMap}
+          setSelectedMember={setSelectedMember}
+          handleAddToSelectedTeam={handleAddToSelectedTeam}
+          handleRemoveFromTeam={teamManager.handleRemoveFromTeam}
+          selectedTeamId={selectedTeamId}
+          isSelectedTeamSpecial={isSelectedTeamIdSpecial}
+          memberAllTeamIds={memberAllTeamIds}
+          title={modals.statsModalTitle || ''}
+        />
+      )}
+
+      {isDiscordModalOpen && (
+        <DiscordConfigModal 
+          onClose={() => {
+            setIsDiscordModalOpen(false);
+            fetchDiscordConfig();
+          }} 
+          groupID={userGroup || ''}
+          showToast={showToast}
+        />
+      )}
+
+      {tacticalBoardSetup && (
+        <TacticalBoardModal
+          groupID={userGroup || ''}
+          setupID={tacticalBoardSetup.id}
+          setupName={tacticalBoardSetup.name}
+          onClose={() => setTacticalBoardSetup(null)}
+          areas={teamManager.areas}
+        />
+      )}
+
+      <AnimatePresence>
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
