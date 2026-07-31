@@ -589,10 +589,14 @@ export default function App() {
   // cắt tin theo trần 2000 ký tự. Để backend tự dịch thì phải chép cả bảng i18n sang, hai
   // bên lệch nhau lúc nào không hay.
   const handlePostLineup = async () => {
+    // Tiêu đề lấy TÊN BÀI XẾP, không lấy nhãn nút. "Đăng đội hình" là câu lệnh bấm, đọc lên
+    // như tiêu đề thì vô nghĩa. Bài chưa đặt tên thì mới dùng nhãn mặc định.
+    const tenBai = (teamManager.currentSetupName || '').trim();
+    const chuaDatTen = !tenBai || tenBai === t('setup.newSetup');
     const payload = {
       groupID: userGroup,
       channelId: selectedChannelId || undefined,
-      title: t('header.postLineup'),
+      title: chuaDatTen ? t('header.postLineupTitle') : tenBai,
       nguoiXep: username,        // để bot hiện "xếp bởi ai" khi gõ /doihinh
       areas: areas.map((area) => ({
         name: area.name,

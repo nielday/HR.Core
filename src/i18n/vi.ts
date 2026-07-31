@@ -62,6 +62,7 @@ export const vi = {
       closePollSuccess: 'Đã đóng poll!',
       closePollError: 'Lỗi khi đóng poll',
       postLineup: 'Đăng đội hình',
+      postLineupTitle: 'Đội hình bang chiến',
       postLineupSuccess: 'Đã đăng đội hình lên Discord',
       postLineupError: 'Không đăng được đội hình',
       openGvgSuccess: 'Đã mở đăng ký GvG!',

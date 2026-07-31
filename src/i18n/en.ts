@@ -61,6 +61,7 @@ export const en = {
       closePollSuccess: 'Poll closed!',
       closePollError: 'Error closing poll',
       postLineup: 'Post lineup',
+      postLineupTitle: 'Guild war lineup',
       postLineupSuccess: 'Lineup posted to Discord',
       postLineupError: 'Failed to post lineup',
       openGvgSuccess: 'GvG registration opened!',
