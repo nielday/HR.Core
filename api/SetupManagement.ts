@@ -138,21 +138,46 @@ router.get('/custom-members/:groupID', async (req, res) => {
     //      chính là Discord ID thì vẫn cứu được — dò cả `id` lẫn `name`.
     // Dùng cache của discord.js nên không tốn request mỗi lần gọi. Hỏng thì trả nguyên
     // danh sách — thiếu ảnh còn hơn mất cả danh sách.
+    // ⚠️ ĐỪNG DÙNG guild.members.fetch() Ở ĐÂY.
+    // Bản đầu tôi gọi nó để nạp cache, nhưng đó là opcode 8 (REQUEST_GUILD_MEMBERS) tải
+    // TOÀN BỘ thành viên server qua gateway, và endpoint này chạy mỗi lần mở trang / bấm
+    // refresh. Log thật: "Request with opcode 8 was rate limited. Retry after 26.44s".
+    // Bị chặn là hàm ném lỗi -> không làm tươi -> rơi về avatar rỗng trong DB -> bấm
+    // refresh xong AVATAR BIẾN MẤT. Vá một lỗi, đẻ ra lỗi nặng hơn.
+    //
+    // Cách đúng, ba tầng:
+    //   1. Chỉ đụng Discord với người CHƯA CÓ avatar. Có rồi thì thôi.
+    //   2. Dùng client.users.fetch(id) — REST cho từng người, rẻ hơn hẳn op 8.
+    //   3. LƯU LẠI vào DB. Lần sau khỏi hỏi Discord nữa. Đây là chỗ bản cũ thiếu: nó chỉ
+    //      đọc, nên hễ Discord trục trặc là mất ảnh.
+    // Kèm trần 8 người mỗi lượt để không bao giờ dội thành cụm lớn.
     const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
+    const TRAN_MOI_LUOT = 8;
     try {
-      const client = await getDiscordClient(groupID);
-      const guildId = localData.groups[groupID]?.configs?.discord?.guildId;
-      if (client && guildId && groupMembers.some((m) => laSnowflake(m.id) || laSnowflake(m.name))) {
-        const guild = await client.guilds.fetch(guildId);
-        await guild.members.fetch();                 // nạp cache một lần cho cả vòng lặp
-        for (const m of groupMembers) {
-          const did = laSnowflake(m.id) ? m.id.trim() : (laSnowflake(m.name) ? m.name.trim() : null);
-          if (!did) continue;
-          const dm = guild.members.cache.get(did);
-          if (!dm) continue;
-          m.avatar = dm.user.displayAvatarURL();
-          // Ô tên đang là dãy số Discord ID thì thay bằng tên thật cho dễ nhìn.
-          if (laSnowflake(m.name)) m.name = normalizeDiscordName(dm.displayName || dm.user.username);
+      const canLay = groupMembers
+        .filter((m) => !m.avatar && (laSnowflake(m.id) || laSnowflake(m.name)))
+        .slice(0, TRAN_MOI_LUOT);
+
+      if (canLay.length) {
+        const client = await getDiscordClient(groupID);
+        if (client) {
+          let coDoi = false;
+          for (const m of canLay) {
+            const did = laSnowflake(m.id) ? m.id.trim() : m.name.trim();
+            try {
+              const u = await client.users.fetch(did);
+              if (!u) continue;
+              m.avatar = u.displayAvatarURL();
+              if (laSnowflake(m.name)) m.name = normalizeDiscordName(u.globalName || u.username);
+              // Ghi vào DB để lần sau không phải hỏi Discord nữa.
+              if (localData.members[m.id]) {
+                localData.members[m.id].avatar = m.avatar;
+                if (m.name) localData.members[m.id].name = m.name;
+                coDoi = true;
+              }
+            } catch { /* người này không tra được thì bỏ, đừng dừng cả vòng */ }
+          }
+          if (coDoi) saveDb(localData);
         }
       }
     } catch (e: any) {
