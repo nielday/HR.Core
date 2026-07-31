@@ -332,7 +332,7 @@ export default function App() {
       // Ưu tiên danh sách kênh voice đã tick. Chưa tick cái nào thì mới rơi về ô chọn kênh
       // trên thanh tiêu đề, để người chưa dùng tính năng này không thấy khác gì.
       const kenh = channelId ?? (voiceChon.length ? voiceChon : selectedChannelId);
-      await refreshMembers(source, gvgIndex, kenh);
+      await refreshMembers(source, gvgIndex, kenh, chiThanhVien);
     } finally {
       setIsRefreshing(false);
     }
@@ -362,12 +362,16 @@ export default function App() {
   const [voiceLoi, setVoiceLoi] = useState('');
   const [voiceChon, setVoiceChon] = useState<string[]>([]);
   const [voiceGan, setVoiceGan] = useState<Record<string, string>>({});
+  // Mặc định BẬT. Kênh voice trả về cả người tạt vào nghe chơi, mà mặc định hợp lý là danh
+  // sách xếp trận chỉ gồm người trong bang.
+  const [chiThanhVien, setChiThanhVien] = useState(true);
 
   useEffect(() => {
     const vn = discordConfig?.voiceNguon;
     if (!vn) return;
     setVoiceChon(vn.chon || []);
     setVoiceGan(vn.gan || {});
+    setChiThanhVien(vn.chiThanhVien !== false);
   }, [discordConfig]);
 
   const napKenhVoice = async () => {
@@ -386,15 +390,16 @@ export default function App() {
   // mỗi lần bot đổi trạng thái, còn lại để người dùng chủ động bấm làm mới.
   useEffect(() => { if (isConnected) napKenhVoice(); }, [isConnected, userGroup]);
 
-  const luuNguonVoice = async (chon: string[], gan: Record<string, string>) => {
+  const luuNguonVoice = async (chon: string[], gan: Record<string, string>, chiTv = chiThanhVien) => {
     setVoiceChon(chon);
     setVoiceGan(gan);
+    setChiThanhVien(chiTv);
     if (!userGroup) return;
     try {
       await fetch(`/api/bot-config/${userGroup}/voice-nguon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chon, gan }),
+        body: JSON.stringify({ chon, gan, chiThanhVien: chiTv }),
       });
     } catch (e) {
       console.error('Không lưu được nguồn voice:', e);
@@ -417,7 +422,8 @@ export default function App() {
     // không phải ngồi đếm lại từng đội.
     showToast(
       t('sidebar.voice.arranged', { n: kq.daThem, k: kq.soKhu })
-        + (kq.boQua ? ` ${t('sidebar.voice.skipped', { n: kq.boQua })}` : ''),
+        + (kq.boQua ? ` ${t('sidebar.voice.skipped', { n: kq.boQua })}` : '')
+        + (kq.khach ? ` ${t('sidebar.voice.skippedGuestsArrange', { n: kq.khach })}` : ''),
       'success',
     );
   };
@@ -797,6 +803,7 @@ export default function App() {
           voiceLoi={voiceLoi}
           voiceChon={voiceChon}
           voiceGan={voiceGan}
+          chiThanhVien={chiThanhVien}
           areaOptions={areas.map((a) => ({ id: a.id, name: a.name }))}
           onVoiceChange={luuNguonVoice}
           onReloadVoice={napKenhVoice}

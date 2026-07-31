@@ -58,8 +58,9 @@ interface UnassignedSidebarProps {
   voiceLoi: string;
   voiceChon: string[];
   voiceGan: Record<string, string>;
+  chiThanhVien: boolean;
   areaOptions: { id: string; name: string }[];
-  onVoiceChange: (chon: string[], gan: Record<string, string>) => void;
+  onVoiceChange: (chon: string[], gan: Record<string, string>, chiThanhVien?: boolean) => void;
   onReloadVoice: () => void;
   onXepTheoVoice: () => void;
   onDonTrung: () => void;
@@ -107,6 +108,7 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
   voiceLoi,
   voiceChon,
   voiceGan,
+  chiThanhVien,
   areaOptions,
   onVoiceChange,
   onReloadVoice,
@@ -296,6 +298,24 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                                 </div>
                               );
                             })}
+
+                            {voiceChannels.length > 0 && (
+                              <label
+                                className="mt-1 flex items-start gap-1.5 cursor-pointer text-[10px] leading-tight text-[#949BA4] border-t border-[#3F4147] pt-1.5"
+                                title={t('sidebar.voice.onlyMembersHint')}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={chiThanhVien}
+                                  onChange={(e) => {
+                                    onVoiceChange(voiceChon, voiceGan, e.target.checked);
+                                    onRefreshMembers('discord');
+                                  }}
+                                  className="accent-[#5865F2] h-3 w-3 mt-0.5 shrink-0"
+                                />
+                                <span>{t('sidebar.voice.onlyMembers')}</span>
+                              </label>
+                            )}
 
                             {voiceChon.length > 0 && (
                               <button

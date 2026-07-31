@@ -66,6 +66,8 @@ export type Member = {
   /** Kênh voice người này đang ngồi, chỉ có khi lấy từ nguồn voice. */
   voiceChannelId?: string;
   voiceChannelName?: string;
+  /** Ngồi trong voice nhưng không có bản ghi nào trong danh sách bang. */
+  laKhach?: boolean;
 };
 
 export type Team = {
@@ -119,6 +121,8 @@ export type VoiceNguon = {
   chon: string[];
   /** kênh voice -> id khu, để nút "Xếp theo voice" biết thả ai vào đâu. */
   gan: Record<string, string>;
+  /** Bỏ qua người trong voice mà không có trong danh sách thành viên. Mặc định bật. */
+  chiThanhVien?: boolean;
 };
 
 export type DiscordConfig = {

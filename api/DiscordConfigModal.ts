@@ -109,7 +109,8 @@ router.post('/bot-config/:groupID', async (req, res) => {
 router.post('/bot-config/:groupID/voice-nguon', async (req, res) => {
   try {
     const { groupID } = req.params;
-    const { chon, gan } = req.body as { chon?: string[]; gan?: Record<string, string> };
+    const { chon, gan, chiThanhVien } = req.body as
+      { chon?: string[]; gan?: Record<string, string>; chiThanhVien?: boolean };
 
     const localData = loadDb();
     if (!localData.groups[groupID]) {
@@ -123,6 +124,7 @@ router.post('/bot-config/:groupID/voice-nguon', async (req, res) => {
     localData.groups[groupID].configs!.discord!.voiceNguon = {
       chon: Array.isArray(chon) ? chon.filter((v) => typeof v === 'string') : [],
       gan: gan && typeof gan === 'object' ? gan : {},
+      chiThanhVien: chiThanhVien !== false,
     };
     saveDb(localData);
 

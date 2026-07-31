@@ -962,7 +962,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     }
   };
 
-  const refreshMembers = async (sourceOverride?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string | string[]) => {
+  const refreshMembers = async (sourceOverride?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string | string[], chiThanhVien = true) => {
     if (!groupID) {
       console.warn('Cannot refresh members: groupID is missing');
       return;
@@ -1079,7 +1079,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         console.error('Failed to fetch batch profiles:', e);
       }
 
-      const membersWithProfiles = fetchedMembers.map((m: any) => {
+      let membersWithProfiles = fetchedMembers.map((m: any) => {
         const profile = profilesMap.get(m.name.toLowerCase());
         if (profile) {
           const { id, name, avatar, ...restProfile } = profile;
@@ -1099,6 +1099,24 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       for (const [rid, c] of Object.entries<any>(memberConfigs || {})) {
         const did = c?.discordId || (/^\d{17,19}$/.test(rid) ? rid : '');
         if (did && !theoDiscordId.has(did)) theoDiscordId.set(did, { id: rid, config: c });
+      }
+
+      // LỌC NGƯỜI LẠ RA KHỎI NGUỒN VOICE.
+      // Kênh voice trả về mọi người đang ngồi trong đó, kể cả người tạt vào nghe chơi. Họ
+      // không có trong danh sách bang nhưng vẫn hiện ra như một tuyển thủ, và tệ hơn là
+      // "Xếp theo voice" thả luôn họ vào đội.
+      // Chỉ lọc ở nguồn voice. Poll và GvG thì người bỏ phiếu chính là người cần lấy, lọc
+      // vào đó là mất người.
+      const coTrongDs = (dm: any) => !!(memberConfigs[dm.id] || theoDiscordId.get(dm.discordId || dm.id));
+      let soKhach = 0;
+      if (source === 'discord') {
+        soKhach = membersWithProfiles.filter((m: any) => !coTrongDs(m)).length;
+        if (chiThanhVien) membersWithProfiles = membersWithProfiles.filter(coTrongDs);
+      }
+      // Nói ra số người bị bỏ. Im lặng lọc là người dùng đếm thiếu người mà không hiểu vì sao,
+      // nhất là khi người thật sự mới vào bang cũng bị lọc cùng.
+      if (soKhach && chiThanhVien && showToast) {
+        showToast(t('sidebar.voice.skippedGuests', { n: soKhach }), 'info');
       }
 
       const newMembersDataMap = new Map();
@@ -1152,6 +1170,9 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
           discordId: dm.discordId || config.discordId || (/^\d{17,19}$/.test(dm.id) ? dm.id : undefined),
           voiceChannelId: dm.voiceChannelId,
           voiceChannelName: dm.voiceChannelName,
+          // Người trong voice mà không có bản ghi nào trong danh sách bang. Đánh dấu để lúc
+          // tắt bộ lọc vẫn nhìn ra ngay ai là khách, khỏi xếp nhầm họ vào đội.
+          laKhach: source === 'discord' && !khop,
           name: normalizeDiscordName(dm.name),
           avatar: dm.avatar,
           ingameName: dm.ingameName || config.ingameName || '',
@@ -1262,8 +1283,12 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     const theoKhu = new Map<string, Member[]>();
     let boQua = 0;
     let daTrongDoi = 0;
+    let khach = 0;
     for (const m of unassignedMembers) {
       if (daXep.has(m.id) || (m.discordId && daXep.has(m.discordId))) { daTrongDoi++; continue; }
+      // Không tự thả khách vào đội, kể cả khi người dùng tắt bộ lọc để nhìn cho đủ. Tắt lọc
+      // là để XEM ai đang trong voice, không phải để xếp họ ra trận. Muốn dùng thì kéo tay.
+      if (m.laKhach) { khach++; continue; }
       const areaId = m.voiceChannelId ? gan[m.voiceChannelId] : undefined;
       if (!areaId) { boQua++; continue; }
       if (!theoKhu.has(areaId)) theoKhu.set(areaId, []);
@@ -1305,7 +1330,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     // cần một cách sửa khác nhau: danh sách rỗng (chưa ai vào voice), ai cũng đã đứng trong
     // đội rồi, hay có người nhưng ngồi ở kênh chưa gán khu. Gộp chung một câu là người dùng
     // đi sửa nhầm chỗ.
-    return { daThem, boQua, soKhu: theoKhu.size, tongCho: unassignedMembers.length, daTrongDoi };
+    return { daThem, boQua, khach, soKhu: theoKhu.size, tongCho: unassignedMembers.length, daTrongDoi };
   };
   
   const handleDeleteCustomMember = async (memberId: string) => {

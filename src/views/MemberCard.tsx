@@ -259,7 +259,18 @@ export const MemberCard: React.FC<MemberCardProps> = ({
               phân biệt được ai bên công ai bên thủ, không thì gộp xong lại rối hơn.
               Chỉ hiện ở danh sách chờ và khi người này chưa được xếp vào đội nào, để không
               chen với nhãn đội vốn quan trọng hơn. */}
-          {member.voiceChannelName && sourceId === 'unassigned' && !assignedTeamInfo && (
+          {/* Người ngồi trong voice nhưng không có trong danh sách bang. Phải nhìn ra ngay,
+              không thì xếp nhầm khách vào đội mà không ai biết. */}
+          {member.laKhach && (
+            <div
+              className="flex shrink-0 items-center rounded bg-amber-500/20 px-1.5 py-1 text-[10px] font-bold text-amber-400 border border-amber-500/30 mr-1"
+              title="Đang trong voice nhưng chưa có trong danh sách thành viên"
+            >
+              khách
+            </div>
+          )}
+
+          {member.voiceChannelName && sourceId === 'unassigned' && !assignedTeamInfo && !member.laKhach && (
             <div
               className="flex min-w-0 items-center gap-1 rounded bg-[#5865F2]/20 px-1.5 py-1 text-[10px] font-bold text-[#a5b0ff] border border-[#5865F2]/30 mr-1"
               title={`Đang trong kênh voice: ${member.voiceChannelName}`}
