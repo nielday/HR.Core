@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Tài khoản: KHÔNG commit. Tạo bằng ADMIN_USER/ADMIN_PASS lúc khởi động (api/seedAdmin.ts).
+db/

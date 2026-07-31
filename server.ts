@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { app as apiApp } from "./api.ts";
 import { downloadDbFromGCS } from "./api/gcsSync.ts";
+import { seedAdmin } from "./api/seedAdmin.ts";
 
 async function startServer() {
   const app = express();
@@ -16,6 +17,9 @@ async function startServer() {
   } catch (err) {
     console.error("[GCS Sync] Failed to download DB from GCS on startup:", err);
   }
+
+  // Sau khi đã đồng bộ db về: nếu chưa có tài khoản nào thì tạo từ ADMIN_USER/ADMIN_PASS.
+  seedAdmin();
 
   app.use(apiApp);
 
