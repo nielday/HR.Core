@@ -2,7 +2,7 @@ import { ROLE_OPTIONS } from '../constants';
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useTeamManager, useFilters, useModals } from '../controllers';
-import { Member, DiscordConfig } from '../models';
+import { Member, DiscordConfig, VoiceChannel } from '../models';
 import { isTowerArea, isPVPArea, normalizeDiscordName } from '../utils';
 import { useTranslation } from 'react-i18next';
 import {
@@ -314,18 +314,90 @@ export default function App() {
     }
   };
 
-  const handleRefresh = async (source?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string) => {
+  const handleRefresh = async (source?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string | string[]) => {
     const currentSource = source || teamManager.memberSource;
     if (currentSource === 'discord' && !isConnected) {
       showToast(t('toasts.connectBotFirst'), 'error');
       return;
     }
+    // Bỏ tick hết kênh thì nói thẳng, đừng lặng lẽ rơi về ô chọn kênh trên thanh tiêu đề:
+    // ô đó thường trỏ vào kênh CHỮ, gọi vào là ra lỗi "không phải kênh voice" chẳng ăn nhập
+    // gì với việc vừa bỏ tick.
+    if (currentSource === 'discord' && voiceChannels.length > 0 && voiceChon.length === 0) {
+      showToast(t('sidebar.voice.needPick'), 'error');
+      return;
+    }
     setIsRefreshing(true);
     try {
-      await refreshMembers(source, gvgIndex, channelId || selectedChannelId);
+      // Ưu tiên danh sách kênh voice đã tick. Chưa tick cái nào thì mới rơi về ô chọn kênh
+      // trên thanh tiêu đề, để người chưa dùng tính năng này không thấy khác gì.
+      const kenh = channelId ?? (voiceChon.length ? voiceChon : selectedChannelId);
+      await refreshMembers(source, gvgIndex, kenh);
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  // ===== Nguồn danh sách theo NHIỀU kênh voice =====
+  // Bang chiến chia sẵn voice công và voice thủ, mà nguồn cũ đọc đúng một kênh nên với kiểu
+  // chia đó nó vốn không dùng được.
+  const [voiceChannels, setVoiceChannels] = useState<VoiceChannel[]>([]);
+  const [voiceLoi, setVoiceLoi] = useState('');
+  const [voiceChon, setVoiceChon] = useState<string[]>([]);
+  const [voiceGan, setVoiceGan] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const vn = discordConfig?.voiceNguon;
+    if (!vn) return;
+    setVoiceChon(vn.chon || []);
+    setVoiceGan(vn.gan || {});
+  }, [discordConfig]);
+
+  const napKenhVoice = async () => {
+    if (!userGroup) return;
+    try {
+      const res = await fetch(`/api/voice-channels/${userGroup}`);
+      const kq = await res.json();
+      setVoiceChannels(kq.channels || []);
+      setVoiceLoi(kq.error || '');
+    } catch {
+      setVoiceLoi(t('sidebar.voice.loadError'));
+    }
+  };
+
+  // Bot lên rồi mới hỏi được danh sách kênh. Số người trong kênh đổi liên tục nên nạp lại
+  // mỗi lần bot đổi trạng thái, còn lại để người dùng chủ động bấm làm mới.
+  useEffect(() => { if (isConnected) napKenhVoice(); }, [isConnected, userGroup]);
+
+  const luuNguonVoice = async (chon: string[], gan: Record<string, string>) => {
+    setVoiceChon(chon);
+    setVoiceGan(gan);
+    if (!userGroup) return;
+    try {
+      await fetch(`/api/bot-config/${userGroup}/voice-nguon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chon, gan }),
+      });
+    } catch (e) {
+      console.error('Không lưu được nguồn voice:', e);
+    }
+  };
+
+  const handleXepTheoVoice = () => {
+    const soGan = Object.keys(voiceGan).filter((k) => voiceGan[k]).length;
+    if (!soGan) return showToast(t('sidebar.voice.needMap'), 'error');
+    const kq = teamManager.handleXepTheoVoice(voiceGan);
+    if (!kq.daThem) {
+      return showToast(kq.boQua ? t('sidebar.voice.allSkipped', { n: kq.boQua }) : t('sidebar.voice.nothing'), 'info');
+    }
+    // Nói luôn số người BỎ QUA. Xếp xong mà thiếu người thì phải biết ngay là thiếu ai chứ
+    // không phải ngồi đếm lại từng đội.
+    showToast(
+      t('sidebar.voice.arranged', { n: kq.daThem, k: kq.soKhu })
+        + (kq.boQua ? ` ${t('sidebar.voice.skipped', { n: kq.boQua })}` : ''),
+      'success',
+    );
   };
 
   const handleChannelChange = async (id: string) => {
@@ -699,6 +771,14 @@ export default function App() {
           gvgOptionIndex={teamManager.gvgOptionIndex}
           setGvgOptionIndex={teamManager.setGvgOptionIndex}
           isInitialStatusChecked={isInitialStatusChecked}
+          voiceChannels={voiceChannels}
+          voiceLoi={voiceLoi}
+          voiceChon={voiceChon}
+          voiceGan={voiceGan}
+          areaOptions={areas.map((a) => ({ id: a.id, name: a.name }))}
+          onVoiceChange={luuNguonVoice}
+          onReloadVoice={napKenhVoice}
+          onXepTheoVoice={handleXepTheoVoice}
           isStatsModalOpen={modals.isStatsModalOpen}
           setIsStatsModalOpen={(open) => {
             if (open) {

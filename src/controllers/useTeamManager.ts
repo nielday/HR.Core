@@ -962,7 +962,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     }
   };
 
-  const refreshMembers = async (sourceOverride?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string) => {
+  const refreshMembers = async (sourceOverride?: 'discord' | 'custom' | 'poll' | 'gvg', gvgIndex?: number, channelId?: string | string[]) => {
     if (!groupID) {
       console.warn('Cannot refresh members: groupID is missing');
       return;
@@ -981,8 +981,10 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       // 1. Fetch members (Discord or Custom)
       if (source === 'discord' || source === 'poll' || source === 'gvg') {
         const url = new URL(`/api/members/${groupID}`, window.location.origin);
-        if (channelId) {
-          url.searchParams.append('channelID', channelId);
+        // Nhiều kênh: bang chiến chia sẵn voice công và voice thủ, đọc một kênh là thiếu nửa đội.
+        const dsKenh = (Array.isArray(channelId) ? channelId : channelId ? [channelId] : []).filter(Boolean);
+        if (dsKenh.length) {
+          url.searchParams.append('channelIDs', dsKenh.join(','));
         }
         fetchPromises.push(fetch(url.toString()).then(async res => {
           if (!res.ok) {
@@ -1013,6 +1015,11 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       const [membersData, memberConfigs, pollResultsData] = await Promise.all(fetchPromises);
       
       let fetchedMembers = Array.isArray(membersData) ? membersData : (membersData.members || []);
+      // Có kênh hỏng giữa chừng thì vẫn lấy được người ở mấy kênh còn lại, nhưng phải nói ra,
+      // không thì người dùng đếm thiếu người mà không hiểu vì sao.
+      if (!Array.isArray(membersData) && membersData?.canhBao && showToast) {
+        showToast(membersData.canhBao, 'info');
+      }
       let pollResults: { continue: string[], backup: string[] } | null = source === 'poll' ? { continue: [], backup: [] } : null;
       let gvgResults: string[] | null = source === 'gvg' ? [] : null;
 
@@ -1108,6 +1115,8 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         newMembersDataMap.set(dm.id, {
           id: dm.id,
           discordId: dm.discordId,
+          voiceChannelId: dm.voiceChannelId,
+          voiceChannelName: dm.voiceChannelName,
           name: normalizeDiscordName(dm.name),
           avatar: dm.avatar,
           ingameName: dm.ingameName || config.ingameName || '',
@@ -1176,6 +1185,65 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
 
   const clearUnassignedMembers = () => {
     setUnassignedMembers([]);
+  };
+
+  /**
+   * Thả người vào khu theo kênh voice họ đang ngồi.
+   *
+   * Nguyên tắc: KHÔNG ĐỤNG vào ai đã đứng trong đội. Người xếp có thể đã cất công kéo tay
+   * vài người, bấm nút này mà xáo lại từ đầu là mất công họ.
+   * Trong một khu thì luôn thả vào đội ĐANG ÍT NGƯỜI NHẤT, nên Công 1/2/3 tự chia đều mà
+   * không cần khai báo sức chứa. Chia xong vẫn kéo lại tay được nếu muốn khác.
+   *
+   * Ai ngồi kênh chưa gán khu, hoặc không ở voice nào, thì để nguyên ngoài danh sách chờ
+   * chứ không đoán bừa. Trả về số liệu để chỗ gọi báo cho người dùng biết còn sót ai.
+   */
+  const handleXepTheoVoice = (gan: Record<string, string>) => {
+    const daXep = new Set<string>();
+    areas.forEach((a) => a.teams.forEach((t) => t.members.forEach((m) => daXep.add(m.id))));
+
+    const theoKhu = new Map<string, Member[]>();
+    let boQua = 0;
+    for (const m of unassignedMembers) {
+      if (daXep.has(m.id)) continue;
+      const areaId = m.voiceChannelId ? gan[m.voiceChannelId] : undefined;
+      if (!areaId) { boQua++; continue; }
+      if (!theoKhu.has(areaId)) theoKhu.set(areaId, []);
+      theoKhu.get(areaId)!.push(m);
+    }
+
+    // Dựng KẾ HOẠCH trước rồi mới đặt state. Đếm ngay trong hàm cập nhật state là sai:
+    // React gọi hàm đó nhiều lần (StrictMode gọi hai lần), số đếm nhân đôi.
+    const keHoach = new Map<string, Member[]>();
+    let daThem = 0;
+    for (const area of areas) {
+      const ds = theoKhu.get(area.id);
+      if (!ds?.length || !area.teams.length) continue;
+      const dem = area.teams.map((t) => t.members.length);
+      for (const m of ds) {
+        let it = 0;
+        for (let i = 1; i < dem.length; i++) if (dem[i] < dem[it]) it = i;
+        const tid = area.teams[it].id;
+        if (!keHoach.has(tid)) keHoach.set(tid, []);
+        keHoach.get(tid)!.push(m);
+        dem[it]++;
+        daThem++;
+      }
+    }
+
+    if (daThem) {
+      setAreas((prev) => prev.map((area) => ({
+        ...area,
+        teams: area.teams.map((t) => {
+          const them = keHoach.get(t.id);
+          return them?.length
+            ? { ...t, members: [...t.members, ...them.map((m) => ({ ...m, isConfirmed: false }))] }
+            : t;
+        }),
+      })));
+    }
+
+    return { daThem, boQua, soKhu: theoKhu.size };
   };
   
   const handleDeleteCustomMember = async (memberId: string) => {
@@ -1359,6 +1427,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     handleCopySetup,
     refreshMembers,
     clearUnassignedMembers,
+    handleXepTheoVoice,
     handleDeleteCustomMember,
     gvgPollOptions,
     setGvgPollOptions,

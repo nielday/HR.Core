@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RefreshCw, Search, Filter, UserPlus, BarChart2, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
-import { Member } from '../models';
+import { Member, VoiceChannel } from '../models';
 import { DropZone, MemberCard, MemberStatsOverviewModal } from './';
 
 const SkeletonMemberCard = () => (
@@ -54,6 +54,14 @@ interface UnassignedSidebarProps {
   gvgOptionIndex: number | null;
   setGvgOptionIndex: (index: number | null) => void;
   isInitialStatusChecked: boolean;
+  voiceChannels: VoiceChannel[];
+  voiceLoi: string;
+  voiceChon: string[];
+  voiceGan: Record<string, string>;
+  areaOptions: { id: string; name: string }[];
+  onVoiceChange: (chon: string[], gan: Record<string, string>) => void;
+  onReloadVoice: () => void;
+  onXepTheoVoice: () => void;
   isStatsModalOpen: boolean;
   setIsStatsModalOpen: (open: boolean) => void;
 }
@@ -94,6 +102,14 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
   gvgOptionIndex,
   setGvgOptionIndex,
   isInitialStatusChecked,
+  voiceChannels,
+  voiceLoi,
+  voiceChon,
+  voiceGan,
+  areaOptions,
+  onVoiceChange,
+  onReloadVoice,
+  onXepTheoVoice,
   isStatsModalOpen,
   setIsStatsModalOpen
 }) => {
@@ -195,11 +211,84 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                           <div className="text-[10px] text-[#949BA4] flex items-center gap-1.5">
                             <div className={`h-1.5 w-1.5 rounded-full ${memberSource === 'discord' ? 'bg-green-500' : memberSource === 'custom' ? 'bg-blue-500' : 'bg-purple-500'}`} />
                             <span>{t('sidebar.showing')}: {
-                              memberSource === 'discord' ? t('sidebar.sources.discord') : 
-                              memberSource === 'custom' ? t('sidebar.sources.members') : 
-                              memberSource === 'poll' ? t('sidebar.sources.votes') : 
+                              memberSource === 'discord' ? t('sidebar.sources.discord') :
+                              memberSource === 'custom' ? t('sidebar.sources.members') :
+                              memberSource === 'poll' ? t('sidebar.sources.votes') :
                               (memberSource === 'gvg' && gvgOptionIndex !== null && gvgPollOptions[gvgOptionIndex]) ? gvgPollOptions[gvgOptionIndex] : t('sidebar.sources.gvg')
                             }</span>
+                          </div>
+                        )}
+
+                        {/* Chọn kênh voice lấy người, chỉ hiện khi đang dùng nguồn voice.
+                            Danh sách hỏi thẳng Discord nên không phải gõ id kênh bằng tay,
+                            và số trong ngoặc là số người đang ngồi trong kênh lúc này. */}
+                        {memberSource === 'discord' && (
+                          <div className="rounded-md border border-[#3F4147] bg-[#1E1F22]/60 p-2 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#949BA4]">
+                                {t('sidebar.voice.title')}
+                              </span>
+                              <button
+                                onClick={onReloadVoice}
+                                disabled={!isConnected}
+                                title={t('sidebar.voice.reload')}
+                                className="rounded p-0.5 text-[#949BA4] hover:bg-[#3F4147] hover:text-[#DBDEE1] disabled:opacity-40"
+                              >
+                                <RefreshCw size={12} />
+                              </button>
+                            </div>
+
+                            {voiceLoi && <div className="text-[10px] text-amber-400/90">{voiceLoi}</div>}
+                            {!voiceLoi && voiceChannels.length === 0 && (
+                              <div className="text-[10px] italic text-[#949BA4]">{t('sidebar.voice.none')}</div>
+                            )}
+
+                            {voiceChannels.map((c) => {
+                              const daTick = voiceChon.includes(c.id);
+                              return (
+                                <div key={c.id} className="flex flex-col gap-1">
+                                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-[#DBDEE1]">
+                                    <input
+                                      type="checkbox"
+                                      checked={daTick}
+                                      onChange={(e) => {
+                                        const chon = e.target.checked
+                                          ? [...voiceChon, c.id]
+                                          : voiceChon.filter((v) => v !== c.id);
+                                        onVoiceChange(chon, voiceGan);
+                                        // Tick xong nạp lại luôn, không bắt bấm thêm nút refresh.
+                                        onRefreshMembers('discord');
+                                      }}
+                                      className="accent-[#5865F2] h-3 w-3"
+                                    />
+                                    <span className="truncate">🔊 {c.name}</span>
+                                    <span className="ml-auto shrink-0 text-[10px] text-[#949BA4]">{c.soNguoi}</span>
+                                  </label>
+                                  {daTick && areaOptions.length > 0 && (
+                                    <select
+                                      value={voiceGan[c.id] || ''}
+                                      onChange={(e) => onVoiceChange(voiceChon, { ...voiceGan, [c.id]: e.target.value })}
+                                      title={t('sidebar.voice.assignHint')}
+                                      className="ml-4 rounded bg-[#2B2D31] border border-[#3F4147] px-1.5 py-1 text-[10px] text-[#DBDEE1] focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
+                                    >
+                                      <option value="">{t('sidebar.voice.noArea')}</option>
+                                      {areaOptions.map((a) => (
+                                        <option key={a.id} value={a.id}>↳ {a.name}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              );
+                            })}
+
+                            {voiceChon.length > 0 && (
+                              <button
+                                onClick={onXepTheoVoice}
+                                className="mt-0.5 rounded bg-[#5865F2] px-2 py-1.5 text-[11px] font-bold text-white hover:bg-[#4752C4] transition-colors"
+                              >
+                                ⚡ {t('sidebar.voice.arrange')}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>

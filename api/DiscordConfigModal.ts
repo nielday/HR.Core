@@ -82,9 +82,12 @@ router.post('/bot-config/:groupID', async (req, res) => {
       localData.groups[groupID].configs = {};
     }
     
-    localData.groups[groupID].configs!.discord = { 
-      token: encryptedToken, 
-      guildId, 
+    // GIỮ nguyên phần cũ rồi mới ghi đè. Trước đây gán thẳng một object mới nên mọi thiết
+    // lập không nằm trong form này (voiceNguon...) bị xoá sạch mỗi lần lưu cấu hình bot.
+    localData.groups[groupID].configs!.discord = {
+      ...(localData.groups[groupID].configs!.discord || {}),
+      token: encryptedToken,
+      guildId,
       channelId,
       pollChannelId: pollChannelId || '',
       channels: channels || []
@@ -97,6 +100,37 @@ router.post('/bot-config/:groupID', async (req, res) => {
   } catch (error: any) {
     console.error('Failed to save bot config:', error);
     res.status(500).json({ error: 'Failed to save bot config' });
+  }
+});
+
+// Lưu NGUỒN VOICE: những kênh đang tick, và kênh nào ứng với khu nào.
+// Để riêng khỏi form Cấu hình Discord vì nó đổi liên tục theo từng buổi đánh, còn token và
+// guild id thì đặt một lần rồi thôi. Bắt mở modal chỉ để tick kênh là phiền.
+router.post('/bot-config/:groupID/voice-nguon', async (req, res) => {
+  try {
+    const { groupID } = req.params;
+    const { chon, gan } = req.body as { chon?: string[]; gan?: Record<string, string> };
+
+    const localData = loadDb();
+    if (!localData.groups[groupID]) {
+      localData.groups[groupID] = { members: [], accounts: {}, configs: {}, setups: {}, polls: {} };
+    }
+    if (!localData.groups[groupID].configs) localData.groups[groupID].configs = {};
+    if (!localData.groups[groupID].configs!.discord) {
+      localData.groups[groupID].configs!.discord = { token: '', guildId: '', channelId: '', channels: [] };
+    }
+
+    localData.groups[groupID].configs!.discord!.voiceNguon = {
+      chon: Array.isArray(chon) ? chon.filter((v) => typeof v === 'string') : [],
+      gan: gan && typeof gan === 'object' ? gan : {},
+    };
+    saveDb(localData);
+
+    invalidateBotConfigCache(groupID);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to save voice source:', error);
+    res.status(500).json({ error: 'Không lưu được nguồn voice' });
   }
 });
 

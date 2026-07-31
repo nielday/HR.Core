@@ -255,6 +255,20 @@ export const MemberCard: React.FC<MemberCardProps> = ({
             </div>
           </div>
 
+          {/* Nhãn kênh voice. Lấy người từ nhiều kênh cùng lúc thì nhìn danh sách gộp phải
+              phân biệt được ai bên công ai bên thủ, không thì gộp xong lại rối hơn.
+              Chỉ hiện ở danh sách chờ và khi người này chưa được xếp vào đội nào, để không
+              chen với nhãn đội vốn quan trọng hơn. */}
+          {member.voiceChannelName && sourceId === 'unassigned' && !assignedTeamInfo && (
+            <div
+              className="flex min-w-0 items-center gap-1 rounded bg-[#5865F2]/20 px-1.5 py-1 text-[10px] font-bold text-[#a5b0ff] border border-[#5865F2]/30 mr-1"
+              title={`Đang trong kênh voice: ${member.voiceChannelName}`}
+            >
+              <span className="shrink-0">🔊</span>
+              <span className="block truncate">{member.voiceChannelName}</span>
+            </div>
+          )}
+
           {assignedTeamInfo && sourceId === 'unassigned' && (
             <div className="flex min-w-0 items-center gap-1 rounded bg-[#2ecc71]/20 px-1.5 py-1 text-[10px] font-bold text-[#2ecc71] border border-[#2ecc71]/30 mr-1" title={`${t('setup.assignedTo')}: ${assignedTeamInfo.teamName}`}>
               <UserCheck size={12} className="shrink-0" />

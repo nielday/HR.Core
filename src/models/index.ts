@@ -63,6 +63,9 @@ export type Member = {
   note?: string;
   source?: 'discord' | 'custom';
   type?: number;
+  /** Kênh voice người này đang ngồi, chỉ có khi lấy từ nguồn voice. */
+  voiceChannelId?: string;
+  voiceChannelName?: string;
 };
 
 export type Team = {
@@ -102,6 +105,22 @@ export type DiscordChannel = {
   name: string;
 };
 
+/** Kênh voice đọc thẳng từ Discord, kèm số người đang ngồi trong đó. */
+export type VoiceChannel = {
+  id: string;
+  name: string;
+  thuMuc?: string;
+  soNguoi: number;
+};
+
+/** Nguồn danh sách theo voice: kênh nào đang tick, và kênh nào ứng với khu nào. */
+export type VoiceNguon = {
+  /** id các kênh voice đang lấy người. */
+  chon: string[];
+  /** kênh voice -> id khu, để nút "Xếp theo voice" biết thả ai vào đâu. */
+  gan: Record<string, string>;
+};
+
 export type DiscordConfig = {
   token: string;
   guildId: string;
@@ -111,4 +130,5 @@ export type DiscordConfig = {
    *  chat của kênh voice — đúng về kỹ thuật nhưng không ai vào đó xem. */
   pollChannelId?: string;
   channels?: DiscordChannel[];
+  voiceNguon?: VoiceNguon;
 };
