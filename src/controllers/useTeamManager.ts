@@ -1208,7 +1208,22 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         });
       });
 
-      setUnassignedMembers(newUnassigned);
+      // GỘP BẢN GHI TRÙNG NGƯỜI.
+      // DB có thể chứa HAI bản ghi cho cùng một người: thêm tay hai lần là hai khoá
+      // 'custom_<thời điểm>' khác nhau, cùng một discordId. Đo thật trên máy chủ thấy đúng
+      // như vậy. Không gộp thì danh sách hiện hai thẻ giống hệt nhau, và tệ hơn là bản này
+      // đứng trong đội rồi mà bản kia vẫn bị "Xếp theo voice" thả thêm vào đội khác.
+      // Giữ bản ĐANG ĐƯỢC DÙNG trong đội hình nếu có, để bài xếp cũ không trỏ vào khoảng không.
+      const dangTrongDoi = new Set<string>();
+      areas.forEach((a) => a.teams.forEach((t) => t.members.forEach((m) => dangTrongDoi.add(m.id))));
+      const theoNguoi = new Map<string, Member>();
+      for (const m of newUnassigned) {
+        const khoa = m.discordId || m.id;
+        const cu = theoNguoi.get(khoa);
+        if (!cu || (!dangTrongDoi.has(cu.id) && dangTrongDoi.has(m.id))) theoNguoi.set(khoa, m);
+      }
+
+      setUnassignedMembers([...theoNguoi.values()]);
       setLastRefreshedSource(source);
     } catch (error: any) {
       console.error('Refresh members error:', error);
@@ -1234,14 +1249,21 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
    * chứ không đoán bừa. Trả về số liệu để chỗ gọi báo cho người dùng biết còn sót ai.
    */
   const handleXepTheoVoice = (gan: Record<string, string>) => {
+    // Nhận diện người đã đứng trong đội bằng CẢ id LẪN discordId.
+    // Chỉ so id là hụt: cùng một người có thể mang hai khoá khác nhau (hai bản ghi trùng
+    // trong DB, hoặc bản lấy từ voice mang khoá khác bản đã kéo tay). Hụt một cái là thả
+    // thêm một bản sao nữa vào đội, đúng lỗi "Naiel ở cả Công 1 lẫn Công 2".
     const daXep = new Set<string>();
-    areas.forEach((a) => a.teams.forEach((t) => t.members.forEach((m) => daXep.add(m.id))));
+    areas.forEach((a) => a.teams.forEach((t) => t.members.forEach((m) => {
+      daXep.add(m.id);
+      if (m.discordId) daXep.add(m.discordId);
+    })));
 
     const theoKhu = new Map<string, Member[]>();
     let boQua = 0;
     let daTrongDoi = 0;
     for (const m of unassignedMembers) {
-      if (daXep.has(m.id)) { daTrongDoi++; continue; }
+      if (daXep.has(m.id) || (m.discordId && daXep.has(m.discordId))) { daTrongDoi++; continue; }
       const areaId = m.voiceChannelId ? gan[m.voiceChannelId] : undefined;
       if (!areaId) { boQua++; continue; }
       if (!theoKhu.has(areaId)) theoKhu.set(areaId, []);
