@@ -108,7 +108,7 @@ export async function autoConnectBots() {
             console.error(`Discord Client Error (Group ${groupID}):`, err);
           });
 
-          newClient.once('ready', async () => {
+          newClient.once('clientReady', async () => {
             console.log(`Bot auto-logged in as ${newClient.user?.tag} for group ${groupID}`);
             setupInteractionHandler(newClient, groupID);
             discordClients.set(groupID, newClient);

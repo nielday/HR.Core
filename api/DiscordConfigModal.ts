@@ -144,7 +144,7 @@ router.post('/connect/:groupID', async (req, res) => {
         resolve({ success: false, error: 'Kết nối quá hạn (Timeout). Hãy kiểm tra Token và Internet.' });
       }, 30000);
 
-      newClient.once('ready', async () => {
+      newClient.once('clientReady', async () => {
         clearTimeout(timeout);
         console.log(`Bot logged in as ${newClient.user?.tag} for group ${groupID}`);
         setupInteractionHandler(newClient, groupID);
