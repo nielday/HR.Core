@@ -52,7 +52,7 @@ function catVua(s: string, tran: number): string {
 
 const laSnowflake = (v?: string) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
 
-function dongThanhVien(m: MemberOut): string {
+function dongThanhVien(m: MemberOut, coLink = true): string {
   const icon = m.roleIcon ? `${m.roleIcon} ` : '• ';
   const vk = m.weapon ? ` _(${m.weapon})_` : '';
   const duBi = m.isBackup ? ' `dự bị`' : '';
@@ -68,15 +68,30 @@ function dongThanhVien(m: MemberOut): string {
   // 'custom_<thời điểm>', trỏ link vào đó là ra trang lỗi.
   // Ngoặc vuông trong tên phá cú pháp link nên phải thoát.
   const ten = (m.ingameName || m.name || '?').trim();
-  if (!laSnowflake(m.discordId)) return `${icon}${ten}${vk}${duBi}`;
+  if (!coLink || !laSnowflake(m.discordId)) return `${icon}${ten}${vk}${duBi}`;
   const chu = `[${ten.replace(/[[\]]/g, '\\$&')}](https://discord.com/users/${(m.discordId as string).trim()})`;
   return `${icon}${chu}${vk}${duBi}`;
 }
 
-/** Cắt theo DÒNG chứ không cắt giữa tên người, và nói rõ còn sót bao nhiêu. */
+/**
+ * Dựng nội dung một ô đội, luôn nằm dưới trần 1024 ký tự của Discord.
+ *
+ * Đội đông thì BỎ LINK TRƯỚC, đừng bỏ người. Mỗi link tốn thêm 49 ký tự URL, nên có link
+ * chỉ nhét vừa 13 người một ô, bỏ link thì vừa hơn 40. Link chỉ là tiện tay bấm xem hồ sơ,
+ * còn thiếu tên trong đội hình là ra trận thiếu người.
+ * Bỏ link theo TỪNG Ô, ô nào đông thì ô đó mất link, mấy ô còn lại vẫn bấm được.
+ */
 export function oThanhVien(ms: MemberOut[]): string {
-  const dong = (ms || []).map(dongThanhVien);
-  if (!dong.length) return '_trống_';
+  if (!ms?.length) return '_trống_';
+
+  const coLink = ms.map((m) => dongThanhVien(m, true)).join('\n');
+  if (coLink.length <= TRAN_O) return coLink;
+
+  const dong = ms.map((m) => dongThanhVien(m, false));
+  const khongLink = dong.join('\n');
+  if (khongLink.length <= TRAN_O) return khongLink;
+
+  // Bỏ link rồi vẫn tràn thì mới đành cắt, và cắt theo DÒNG chứ không cắt giữa tên người.
   let s = '';
   for (let i = 0; i < dong.length; i++) {
     const them = (s ? '\n' : '') + dong[i];
