@@ -35,7 +35,11 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    // Nghe trên 0.0.0.0 = mọi địa chỉ, KHÔNG phải chỉ máy này. In "localhost" cứng làm
+    // người deploy tưởng nó chạy nội bộ nên không ra được web. Ưu tiên tên miền thật.
+    const domain = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.PUBLIC_DOMAIN;
+    if (domain) console.log(`Server đang chạy: https://${domain}  (cổng ${PORT})`);
+    else console.log(`Server đang chạy: http://localhost:${PORT}  (nghe trên 0.0.0.0, máy khác trong mạng vào được)`);
   });
 }
 
