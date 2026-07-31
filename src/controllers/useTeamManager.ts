@@ -1101,8 +1101,13 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
           }
         }
 
+        // ⚠️ ĐÂY LÀ DANH SÁCH TRƯỜNG CỐ ĐỊNH, KHÔNG PHẢI SPREAD.
+        // Thêm trường mới vào model mà quên thêm ở đây là nó bị vứt im lặng ngay tại chỗ:
+        // API trả về đủ, nhưng tới tay giao diện thì mất. discordId đã dính đúng bẫy này,
+        // vá tận API rồi mà mention vẫn không hiện, vì nó chết ở dòng dưới.
         newMembersDataMap.set(dm.id, {
           id: dm.id,
+          discordId: dm.discordId,
           name: normalizeDiscordName(dm.name),
           avatar: dm.avatar,
           ingameName: dm.ingameName || config.ingameName || '',
