@@ -6,6 +6,19 @@ import { initialUnassigned, getTranslatedAreas, isTowerArea, isPVPArea, normaliz
 
 const isSpecialArea = (areaName: string) => isTowerArea(areaName) || isPVPArea(areaName);
 
+// Nhớ thiết lập đang mở để F5 xong quay lại đúng chỗ cũ.
+// Tách khoá theo nhóm: hai nhóm dùng chung trình duyệt thì không giẫm lên nhau.
+// Cố ý để ở localStorage chứ không lưu server: đây là "cửa sổ này đang xem cái nào", chuyện
+// riêng của từng máy. Lưu server thì người này mở là người kia cũng bị nhảy theo.
+const khoaThietLapDangMo = (g: string) => `lastSetupId:${g}`;
+const nhoThietLapDangMo = (g: string, id: string | null) => {
+  if (!g) return;
+  try {
+    if (id) localStorage.setItem(khoaThietLapDangMo(g), id);
+    else localStorage.removeItem(khoaThietLapDangMo(g));
+  } catch { /* chế độ riêng tư chặn localStorage thì thôi, không đáng để vỡ cả trang */ }
+};
+
 export function useTeamManager(isConnected: boolean, groupID: string, username: string = 'Unknown', showToast?: (msg: string, type: 'success' | 'error' | 'info') => void) {
   const { t } = useTranslation();
   const [unassignedMembers, setUnassignedMembers] = useState<Member[]>(initialUnassigned);
@@ -177,6 +190,20 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         if (response.ok && contentType && contentType.includes('application/json')) {
           const data = await response.json();
           setSavedSetups(data);
+
+          // MỞ LẠI thiết lập đang xem trước lúc F5.
+          // Bấm Lưu là dữ liệu vào DB thật, nhưng trang luôn mở ra "Thiết lập mới" trắng
+          // trơn: chỗ này chỉ nạp DANH SÁCH thiết lập rồi thôi, không ai bảo nó mở cái nào.
+          // Người dùng tưởng bấm Lưu không ăn.
+          // Chỉ mở lại đúng cái TRÌNH DUYỆT NÀY đang xem, không tự mở cái mới nhất của nhóm:
+          // hai người xếp hai bài khác nhau mà cứ nhảy sang bài người kia thì loạn.
+          let idCu: string | null = null;
+          try { idCu = localStorage.getItem(khoaThietLapDangMo(groupID)); } catch {}
+          if (idCu && Array.isArray(data)) {
+            const con = data.find((s: SetupMetadata) => s.id === idCu);
+            if (con) handleLoadSetup(con);
+            else nhoThietLapDangMo(groupID, null);   // đã bị xoá thì đừng nhớ nữa
+          }
         } else if (!response.ok) {
           console.error(`Setups fetch failed with status ${response.status}`);
         }
@@ -790,6 +817,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
           }
           return [newMetadata, ...prev];
         });
+        nhoThietLapDangMo(groupID, setupToSave.id);
         setIsSetupDropdownOpen(false);
       } else {
         console.error('Failed to save setup to server');
@@ -816,6 +844,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
     setAreas(resetAreas);
     setCurrentSetupName(t('setup.newSetup'));
     setCurrentSetupId(null);
+    nhoThietLapDangMo(groupID, null);   // chủ động mở bài mới thì F5 cũng ra bài mới
     setSelectedTeamId(null);
     setIsSetupDropdownOpen(false);
   };
@@ -857,6 +886,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       setAreas(newAreas);
       setCurrentSetupName(setup.name);
       setCurrentSetupId(setup.id);
+      nhoThietLapDangMo(groupID, setup.id);
       if (setup.memberSource) {
         setMemberSource(setup.memberSource);
         setLastRefreshedSource(setup.memberSource);
@@ -878,6 +908,7 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         setSavedSetups(prev => prev.filter(s => s.id !== setupId));
         if (currentSetupId === setupId) {
           setCurrentSetupId(null);
+          nhoThietLapDangMo(groupID, null);   // xoá bài đang mở thì quên luôn, đừng để F5 đi tìm bài đã chết
         }
         return true;
       } else {
