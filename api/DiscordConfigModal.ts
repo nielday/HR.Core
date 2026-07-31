@@ -138,7 +138,7 @@ router.post('/connect/:groupID', async (req, res) => {
       console.error(`Discord Client Error (Group ${groupID}):`, err);
     });
 
-    const connectionResult = new Promise<{ success: boolean; error?: string }>((resolve) => {
+    const connectionResult = new Promise<{ success: boolean; error?: string; canhBao?: string }>((resolve) => {
       const timeout = setTimeout(() => {
         resolve({ success: false, error: 'Kết nối quá hạn (Timeout). Hãy kiểm tra Token và Internet.' });
       }, 30000);
@@ -159,15 +159,30 @@ router.post('/connect/:groupID', async (req, res) => {
             return;
           }
 
+          // ⚠️ channels.fetch() KHÔNG có id thì trả về COLLECTION của mọi kênh, không phải
+          // một kênh. Gọi .isVoiceBased() trên Collection là TypeError, rồi bị catch ngoài
+          // nuốt thành "Lỗi khi tham gia kênh voice: channel.isVoiceBased is not a function"
+          // -> thông báo chỉ sai hoàn toàn chỗ hỏng. Phải chặn từ đây.
+          //
+          // Và CỐ Ý cho kết nối khi CHƯA chọn kênh: danh sách kênh chỉ lấy được sau khi bot
+          // đăng nhập, mà trước đây lại bắt buộc phải có kênh mới cho kết nối. Vòng luẩn
+          // quẩn: muốn chọn kênh phải kết nối, muốn kết nối phải chọn kênh.
+          if (!data.channelId) {
+            resolve({ success: true, canhBao: 'Đã kết nối bot, nhưng CHƯA chọn kênh voice. Chọn kênh ở ô bên cạnh rồi lưu lại.' });
+            return;
+          }
+
           const channel = await guild.channels.fetch(data.channelId).catch(err => {
             console.error(`Failed to fetch channel ${data.channelId}:`, err);
             return null;
           });
 
-          if (channel && channel.isVoiceBased()) {
-            resolve({ success: true });
+          if (!channel) {
+            resolve({ success: false, error: `Không tìm thấy kênh (ID: ${data.channelId}), hoặc bot không có quyền xem kênh đó.` });
+          } else if (typeof (channel as any).isVoiceBased !== 'function' || !(channel as any).isVoiceBased()) {
+            resolve({ success: false, error: `Kênh (ID: ${data.channelId}) không phải kênh VOICE. Danh sách thành viên lấy từ người đang ngồi trong kênh voice, nên phải chọn kênh voice.` });
           } else {
-            resolve({ success: false, error: `Không tìm thấy kênh voice (Channel ID: ${data.channelId}) hoặc Bot không có quyền truy cập.` });
+            resolve({ success: true });
           }
         } catch (err: any) {
           resolve({ success: false, error: `Lỗi khi tham gia kênh voice: ${err.message}` });
@@ -186,7 +201,7 @@ router.post('/connect/:groupID', async (req, res) => {
       
       if (result.success) {
         discordClients.set(groupID, newClient);
-        res.json({ success: true });
+        res.json({ success: true, canhBao: result.canhBao });
       } else {
         newClient.destroy();
         res.status(400).json({ error: result.error });
