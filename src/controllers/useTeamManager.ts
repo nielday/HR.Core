@@ -1088,9 +1088,26 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         return m;
       });
 
+      // TRA BẢN GHI ĐÃ LƯU THEO DISCORD ID, KHÔNG CHỈ THEO KHOÁ.
+      // Người lấy từ voice mang id là Discord ID thật, còn bản ghi đã lưu của chính người đó
+      // có thể mang khoá 'custom_<thời điểm>' (sinh ra khi thêm tay lúc bot chưa tra được).
+      // Tra thẳng theo id là trượt, hậu quả kép: tool hiểu thành HAI người khác nhau, và
+      // người "mới" hiện ra trống trơn, không vai trò không vũ khí không tên trong game.
+      // Khớp được thì dùng luôn KHOÁ CŨ làm id, để mọi thứ đã lưu theo khoá đó (vai trò,
+      // vũ khí, thống kê, bài xếp cũ) vẫn trỏ đúng người, và không đẻ thêm bản ghi trùng.
+      const theoDiscordId = new Map<string, { id: string; config: any }>();
+      for (const [rid, c] of Object.entries<any>(memberConfigs || {})) {
+        const did = c?.discordId || (/^\d{17,19}$/.test(rid) ? rid : '');
+        if (did && !theoDiscordId.has(did)) theoDiscordId.set(did, { id: rid, config: c });
+      }
+
       const newMembersDataMap = new Map();
       membersWithProfiles.forEach((dm: any) => {
-        const config = memberConfigs[dm.id] || {};
+        const khop = memberConfigs[dm.id]
+          ? { id: dm.id, config: memberConfigs[dm.id] }
+          : theoDiscordId.get(dm.discordId || dm.id);
+        const config = khop?.config || {};
+        const memberId = khop?.id || dm.id;
         
         const primaryWeapon1 = dm.primaryWeapon1 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon1Id) || WEAPONS.NONE;
         const primaryWeapon2 = dm.primaryWeapon2 || Object.values(WEAPONS).find(w => w.id === config.primaryWeapon2Id) || WEAPONS.NONE;
@@ -1112,9 +1129,11 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         // Thêm trường mới vào model mà quên thêm ở đây là nó bị vứt im lặng ngay tại chỗ:
         // API trả về đủ, nhưng tới tay giao diện thì mất. discordId đã dính đúng bẫy này,
         // vá tận API rồi mà mention vẫn không hiện, vì nó chết ở dòng dưới.
-        newMembersDataMap.set(dm.id, {
-          id: dm.id,
-          discordId: dm.discordId,
+        newMembersDataMap.set(memberId, {
+          id: memberId,
+          // Giữ Discord ID thật kể cả khi id là khoá 'custom_...', để mention và tra Discord
+          // sau này vẫn có cái mà dùng.
+          discordId: dm.discordId || config.discordId || (/^\d{17,19}$/.test(dm.id) ? dm.id : undefined),
           voiceChannelId: dm.voiceChannelId,
           voiceChannelName: dm.voiceChannelName,
           name: normalizeDiscordName(dm.name),

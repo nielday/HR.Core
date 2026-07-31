@@ -4,6 +4,30 @@ import { getDiscordClient, normalizeDiscordName } from './common';
 
 const router = express.Router();
 
+const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
+
+/**
+ * Moi Discord ID thật của một bản ghi thành viên.
+ *
+ * Không dùng thẳng `id` được: người thêm tay lúc bot chưa tra ra mang khoá
+ * 'custom_<thời điểm>'. Thiếu Discord ID thì bản ghi đó thành người vô danh, không mention
+ * được, và nguồn voice trả về cùng người đó sẽ bị hiểu thành người thứ hai.
+ *
+ * Dò ba nấc: id -> name (bản ghi méo cất id vào ô TÊN) -> URL avatar Discord
+ * (cdn.discordapp.com/avatars/<id>/<hash>).
+ * Nấc cuối là nấc CỨU: bản vá avatar trước đây ghi tên thật đè lên ô tên, xoá mất id nằm
+ * trong đó, nhưng lại lưu URL avatar có kèm id.
+ * Bản ghi thêm tay bằng tên tự gõ, chưa từng khớp với Discord, thì chịu, không có gì để moi.
+ */
+function moiDiscordId(m: any): string {
+  if (laSnowflake(m?.discordId)) return String(m.discordId).trim();
+  const tuAvatar = typeof m?.avatar === 'string'
+    ? (m.avatar.match(/cdn\.discordapp\.com\/avatars\/(\d+)\//)?.[1] || '')
+    : '';
+  const tim = [m?.id, m?.name, tuAvatar].find((v) => laSnowflake(v));
+  return tim ? String(tim).trim() : '';
+}
+
 router.get("/setups/:groupID", async (req, res) => {
   try {
     const { groupID } = req.params;
@@ -85,6 +109,24 @@ router.get('/members-config/:groupID', async (req, res) => {
   try {
     const { groupID } = req.params;
     const localData = loadDb();
+
+    // Vá discordId cho MỌI bản ghi, không chỉ người thuộc nhóm đang mở.
+    // Đây là bảng frontend dùng để nhận ra "người vừa lấy từ voice chính là người đã lưu".
+    // Bản ghi thiếu discordId là không khớp được, thành ra cùng một người mà hiện thành hai,
+    // người "mới" thì trống trơn không vai trò không vũ khí.
+    // Chỗ vá kia nằm trong custom-members nên chỉ chạm tới người thuộc nhóm; đo thật trên
+    // máy chủ thấy 3 trong 4 bản ghi nằm ngoài nhóm nên chưa bao giờ được vá.
+    // Chỉ đọc mấy trường sẵn có, không gọi Discord, nên không tốn gì.
+    let coDoi = false;
+    for (const [rid, m] of Object.entries<any>(localData.members || {})) {
+      if (laSnowflake(m?.discordId)) continue;
+      const did = moiDiscordId({ ...m, id: rid });
+      if (!did) continue;
+      localData.members[rid].discordId = did;
+      coDoi = true;
+    }
+    if (coDoi) saveDb(localData);
+
     res.json(localData.members || {});
   } catch (error) {
     res.json({});
@@ -151,28 +193,16 @@ router.get('/custom-members/:groupID', async (req, res) => {
     //   3. LƯU LẠI vào DB. Lần sau khỏi hỏi Discord nữa. Đây là chỗ bản cũ thiếu: nó chỉ
     //      đọc, nên hễ Discord trục trặc là mất ảnh.
     // Kèm trần 8 người mỗi lượt để không bao giờ dội thành cụm lớn.
-    const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
     const TRAN_MOI_LUOT = 8;
     let coDoi = false;
 
-    // GẮN discordId cho từng bản ghi.
-    // Không dùng thẳng `id` được: người thêm tay lúc bot chưa tra ra mang id
-    // 'custom_<thời điểm>'. Thiếu Discord ID thì đội hình đăng lên Discord không bấm vào
-    // xem hồ sơ được. Mà id thật thì vẫn còn, chỉ là nằm rải ba chỗ khác nhau.
-    // Thứ tự dò: id -> name (bản ghi méo cất id vào ô TÊN) -> URL avatar Discord
-    // (cdn.discordapp.com/avatars/<id>/<hash>).
-    // Chỗ cuối là chỗ CỨU: bản vá avatar trước đây ghi tên thật đè lên ô tên, xoá mất id
-    // nằm trong đó, nhưng lại lưu URL avatar có kèm id. Không dò tới đây là mấy bản ghi cũ
-    // mất id vĩnh viễn.
-    const idTuAvatar = (v: any): string =>
-      typeof v === 'string' ? (v.match(/cdn\.discordapp\.com\/avatars\/(\d+)\//)?.[1] || '') : '';
     for (const m of groupMembers) {
       if (laSnowflake(m.discordId)) continue;
-      const tim = [m.id, m.name, idTuAvatar(m.avatar)].find((v) => laSnowflake(v));
-      if (!tim) continue;
-      m.discordId = String(tim).trim();
+      const did = moiDiscordId(m);
+      if (!did) continue;
+      m.discordId = did;
       if (localData.members[m.id]) {
-        localData.members[m.id].discordId = m.discordId;   // vá một lần, lần sau khỏi dò lại
+        localData.members[m.id].discordId = did;   // vá một lần, lần sau khỏi dò lại
         coDoi = true;
       }
     }
