@@ -178,10 +178,19 @@ router.post('/connect/:groupID', async (req, res) => {
             return null;
           });
 
+          // Kênh KHÔNG phải voice thì chỉ CẢNH BÁO, đừng chặn kết nối.
+          // Voice chỉ cần cho đúng một thứ: nguồn "Online (Discord)" lấy danh sách từ người
+          // đang ngồi trong kênh. Còn kết nối bot, đăng poll, đăng đội hình, nguồn "Thành
+          // viên" thì không liên quan gì tới voice. Chặn ở đây là khoá luôn người chỉ muốn
+          // dùng mấy tính năng kia.
           if (!channel) {
             resolve({ success: false, error: `Không tìm thấy kênh (ID: ${data.channelId}), hoặc bot không có quyền xem kênh đó.` });
           } else if (typeof (channel as any).isVoiceBased !== 'function' || !(channel as any).isVoiceBased()) {
-            resolve({ success: false, error: `Kênh (ID: ${data.channelId}) không phải kênh VOICE. Danh sách thành viên lấy từ người đang ngồi trong kênh voice, nên phải chọn kênh voice.` });
+            resolve({
+              success: true,
+              canhBao: 'Đã kết nối. Kênh mặc định đang chọn KHÔNG phải kênh voice, nên nguồn "Online (Discord)" sẽ trống. '
+                + 'Muốn dùng nguồn đó thì chọn một kênh voice; còn poll, đội hình và nguồn "Thành viên" vẫn chạy bình thường.',
+            });
           } else {
             resolve({ success: true });
           }

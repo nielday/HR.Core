@@ -272,6 +272,11 @@ export default function App() {
           clearUnassignedMembers();
         }
         setIsConnected(!isConnected);
+        // Server có thể kết nối THÀNH CÔNG mà vẫn có điều cần nói (chưa chọn kênh, kênh
+        // không phải voice...). Không đọc ra là cảnh báo bị nuốt, người dùng tưởng mọi thứ
+        // ổn rồi sau đó ngồi thắc mắc vì sao danh sách trống.
+        const kq = await res.json().catch(() => ({} as any));
+        if (kq?.canhBao) showToast(kq.canhBao, 'info');
       } else {
         const data = await res.json();
         showToast(data.error || t('toasts.actionFailed'), 'error');
