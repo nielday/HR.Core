@@ -338,6 +338,23 @@ export default function App() {
     }
   };
 
+  // Dọn bản ghi trùng người. XOÁ THẬT nên phải hỏi trước, và nói rõ nó làm gì: gộp, không
+  // phải vứt bớt. Người dùng sợ mất dữ liệu là đúng, nên câu hỏi phải trả lời được nỗi sợ đó.
+  const handleDonTrung = async () => {
+    if (!userGroup) return;
+    if (!window.confirm(t('sidebar.dedupe.confirm'))) return;
+    try {
+      const res = await fetch(`/api/custom-members/${userGroup}/don-trung`, { method: 'POST' });
+      const kq = await res.json();
+      if (!res.ok) return showToast(kq.error || t('sidebar.dedupe.error'), 'error');
+      if (!kq.soNguoi) return showToast(t('sidebar.dedupe.none'), 'info');
+      showToast(t('sidebar.dedupe.done', { n: kq.soNguoi, x: kq.soBanXoa }), 'success');
+      handleRefresh('custom');
+    } catch {
+      showToast(t('sidebar.dedupe.error'), 'error');
+    }
+  };
+
   // ===== Nguồn danh sách theo NHIỀU kênh voice =====
   // Bang chiến chia sẵn voice công và voice thủ, mà nguồn cũ đọc đúng một kênh nên với kiểu
   // chia đó nó vốn không dùng được.
@@ -784,6 +801,7 @@ export default function App() {
           onVoiceChange={luuNguonVoice}
           onReloadVoice={napKenhVoice}
           onXepTheoVoice={handleXepTheoVoice}
+          onDonTrung={handleDonTrung}
           isStatsModalOpen={modals.isStatsModalOpen}
           setIsStatsModalOpen={(open) => {
             if (open) {

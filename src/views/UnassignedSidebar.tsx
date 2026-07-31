@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Filter, UserPlus, BarChart2, Copy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RefreshCw, Search, Filter, UserPlus, BarChart2, Copy, GitMerge } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Member, VoiceChannel } from '../models';
@@ -62,6 +62,7 @@ interface UnassignedSidebarProps {
   onVoiceChange: (chon: string[], gan: Record<string, string>) => void;
   onReloadVoice: () => void;
   onXepTheoVoice: () => void;
+  onDonTrung: () => void;
   isStatsModalOpen: boolean;
   setIsStatsModalOpen: (open: boolean) => void;
 }
@@ -110,6 +111,7 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
   onVoiceChange,
   onReloadVoice,
   onXepTheoVoice,
+  onDonTrung,
   isStatsModalOpen,
   setIsStatsModalOpen
 }) => {
@@ -206,6 +208,20 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                           >
                             <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
                           </motion.button>
+                          {/* Dọn bản ghi trùng. Chỉ hiện ở nguồn "Thành viên" vì đây là chỗ
+                              duy nhất bản ghi được tạo ra, và cũng là chỗ duy nhất nhìn thấy
+                              hậu quả khi trùng. */}
+                          {memberSource === 'custom' && (
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={onDonTrung}
+                              className="flex items-center justify-center rounded-md bg-[#4F545C] hover:bg-[#5D6269] px-3 text-white transition-all h-[34px]"
+                              title={t('sidebar.dedupe.button')}
+                            >
+                              <GitMerge size={18} />
+                            </motion.button>
+                          )}
                         </div>
                         {memberSource && (
                           <div className="text-[10px] text-[#949BA4] flex items-center gap-1.5">

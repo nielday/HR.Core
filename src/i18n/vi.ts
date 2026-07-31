@@ -144,6 +144,13 @@ export const vi = {
       copied: 'Đã copy!',
       expand: 'Mở rộng danh sách',
       collapse: 'Thu nhỏ danh sách',
+      dedupe: {
+        button: 'Dọn bản ghi trùng người',
+        confirm: 'Dọn bản ghi trùng người?\n\nHai lần thêm tay cùng một người sẽ tạo ra hai bản ghi riêng. Thao tác này GỘP chúng lại: giữ một bản, điền vào những ô đang trống bằng dữ liệu của bản kia, rồi xoá bản thừa.\n\nKhông mất thông tin nào, chỉ mất cái vỏ rỗng. Đội hình đã xếp và các bài đã lưu được trỏ lại sang bản giữ.',
+        done: 'Đã gộp {{n}} người, xoá {{x}} bản ghi thừa.',
+        none: 'Không tìm thấy bản ghi trùng nào.',
+        error: 'Không dọn được bản ghi trùng.',
+      },
       voice: {
         title: 'Kênh voice lấy người',
         reload: 'Hỏi lại Discord danh sách kênh và số người',

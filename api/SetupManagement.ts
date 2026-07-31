@@ -259,13 +259,103 @@ router.delete('/custom-members/:groupID/:memberId', async (req, res) => {
     const localData = loadDb();
     if (localData.groups[groupID]?.members) {
       localData.groups[groupID].members = localData.groups[groupID].members.filter(id => id !== memberId);
-      saveDb(localData);
     }
-    
-    res.json({ success: true });
+
+    // XOÁ HẲN bản ghi gốc, không chỉ gỡ khỏi danh sách nhóm.
+    // Bản cũ chỉ gỡ khỏi nhóm nên bản ghi nằm lại trong DB mãi mãi: người dùng bấm xoá,
+    // thấy thẻ biến mất, tưởng xong, nhưng dữ liệu vẫn còn và vẫn chui ra ở chỗ khác.
+    // Vẫn giữ nếu NHÓM KHÁC còn dùng, vì bảng members dùng chung giữa các nhóm, xoá bừa là
+    // đục thủng đội hình của nhóm không liên quan.
+    const nhomKhacConDung = Object.entries(localData.groups)
+      .some(([gid, g]) => gid !== groupID && (g.members || []).includes(memberId));
+    if (!nhomKhacConDung && localData.members[memberId]) {
+      delete localData.members[memberId];
+    }
+
+    saveDb(localData);
+    res.json({ success: true, xoaHan: !nhomKhacConDung });
   } catch (error) {
     console.error('Error deleting custom member:', error);
     res.status(500).json({ error: 'Failed to delete custom member' });
+  }
+});
+
+// =====================================================================
+// DỌN BẢN GHI TRÙNG NGƯỜI.
+//
+// Hai lần thêm tay cùng một người là hai khoá 'custom_<thời điểm>' khác nhau, vì lúc tra
+// Discord hụt thì frontend lấy mốc thời gian làm id. Mốc thời gian thì không bao giờ trùng,
+// nên hệ thống không có cách nào biết hai bản ghi là một người.
+//
+// GỘP chứ không xoá thẳng: lấy một bản làm gốc rồi điền vào những ô đang trống bằng dữ liệu
+// của mấy bản kia. Không bản nào mất thông tin, chỉ mất cái vỏ rỗng.
+// =====================================================================
+router.post('/custom-members/:groupID/don-trung', async (req, res) => {
+  try {
+    const { groupID } = req.params;
+    const localData = loadDb();
+    const tatCa = Object.entries<any>(localData.members || {});
+
+    const theoNguoi = new Map<string, string[]>();
+    for (const [rid, m] of tatCa) {
+      const did = moiDiscordId({ ...m, id: rid });
+      if (!did) continue;   // không moi ra Discord ID thì không dám nói hai bản là một người
+      if (!theoNguoi.has(did)) theoNguoi.set(did, []);
+      theoNguoi.get(did)!.push(rid);
+    }
+
+    const dayDu = (m: any) =>
+      ['ingameName', 'ingameId', 'role', 'position', 'note', 'avatar', 'rankId', 'primaryWeapon1Id']
+        .filter((k) => m?.[k]).length;
+
+    const bienBan: { giu: string; xoa: string[] }[] = [];
+    for (const [, ids] of theoNguoi) {
+      if (ids.length < 2) continue;
+
+      // Ưu tiên bản ĐANG NẰM TRONG nhóm này, rồi mới tới bản nhiều dữ liệu nhất. Giữ đúng
+      // bản đang được dùng thì đội hình đã xếp không phải sửa gì.
+      const trongNhom = new Set(localData.groups[groupID]?.members || []);
+      const giu = [...ids].sort((a, b) => {
+        const ta = trongNhom.has(a) ? 1 : 0;
+        const tb = trongNhom.has(b) ? 1 : 0;
+        if (ta !== tb) return tb - ta;
+        return dayDu(localData.members[b]) - dayDu(localData.members[a]);
+      })[0];
+      const xoa = ids.filter((id) => id !== giu);
+
+      for (const id of xoa) {
+        const nguon = localData.members[id] || {};
+        for (const [k, v] of Object.entries(nguon)) {
+          if (k === 'id') continue;
+          const dangCo = (localData.members[giu] as any)[k];
+          const rong = dangCo === undefined || dangCo === null || dangCo === ''
+            || (Array.isArray(dangCo) && !dangCo.length);
+          if (rong && v !== undefined && v !== null && v !== '') (localData.members[giu] as any)[k] = v;
+        }
+        delete localData.members[id];
+      }
+
+      // Trỏ lại mọi chỗ đang nhắc tới id vừa xoá: danh sách nhóm và các bài xếp đã lưu.
+      // Bỏ bước này là bài xếp cũ trỏ vào bản ghi không còn tồn tại.
+      for (const g of Object.values(localData.groups)) {
+        if (g.members) g.members = Array.from(new Set(g.members.map((id) => (xoa.includes(id) ? giu : id))));
+        for (const st of Object.values<any>(g.setups || {})) {
+          for (const area of st.areas || []) {
+            for (const team of area.teams || []) {
+              team.members = (team.members || []).map((m: any) => (xoa.includes(m.id) ? { ...m, id: giu } : m));
+            }
+          }
+        }
+      }
+
+      bienBan.push({ giu, xoa });
+    }
+
+    if (bienBan.length) saveDb(localData);
+    res.json({ success: true, soNguoi: bienBan.length, soBanXoa: bienBan.reduce((n, b) => n + b.xoa.length, 0) });
+  } catch (error: any) {
+    console.error('Error deduping members:', error);
+    res.status(500).json({ error: error.message || 'Không dọn được bản ghi trùng' });
   }
 });
 

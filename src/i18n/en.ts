@@ -143,6 +143,13 @@ export const en = {
       copied: 'Copied!',
       expand: 'Expand List',
       collapse: 'Collapse List',
+      dedupe: {
+        button: 'Merge duplicate member records',
+        confirm: 'Merge duplicate member records?\n\nAdding the same person by hand twice creates two separate records. This MERGES them: one record is kept, its empty fields are filled from the other, and the leftover is deleted.\n\nNothing is lost, only the empty shell. Existing lineups and saved setups are repointed to the kept record.',
+        done: 'Merged {{n}} people, removed {{x}} leftover records.',
+        none: 'No duplicate records found.',
+        error: 'Could not merge duplicate records.',
+      },
       voice: {
         title: 'Voice channels to pull from',
         reload: 'Ask Discord again for channels and headcount',
