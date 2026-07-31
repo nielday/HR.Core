@@ -6,7 +6,9 @@ import { downloadDbFromGCS } from "./api/gcsSync.ts";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Railway (và mọi PaaS) CẤP cổng qua biến môi trường, không cho tự chọn. Ghi cứng 3000
+  // là container chạy nhưng bên ngoài không vào được, mà log vẫn báo "Server running".
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Sync database from GCS on startup before routing requests
   try {

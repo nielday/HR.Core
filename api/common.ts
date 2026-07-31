@@ -3,6 +3,17 @@ import crypto from 'crypto';
 import fsSync from 'fs';
 import path from 'path';
 
+// ⚠️ Khoá này mã hoá TOKEN BOT DISCORD của từng bang. Khoá mặc định nằm ngay trong mã
+// nguồn, nên ai đọc được repo là giải mã được hết. Chạy máy nhà thì tạm chấp nhận, nhưng
+// deploy mà quên đặt biến thì coi như không mã hoá gì cả -> chặn thẳng ở production.
+if (!process.env.ENCRYPTION_KEY) {
+  const loi = 'ENCRYPTION_KEY chưa được đặt. Token Discord sẽ mã hoá bằng khoá mặc định ghi cứng trong mã nguồn.';
+  if (process.env.NODE_ENV === 'production') {
+    console.error(`[FATAL] ${loi} Từ chối khởi động.`);
+    process.exit(1);
+  }
+  console.warn(`[CẢNH BÁO] ${loi} Chỉ dùng được ở máy cá nhân.`);
+}
 const ENCRYPTION_KEY = (process.env.ENCRYPTION_KEY || '12345678901234567890123456789012').padEnd(32, '0').substring(0, 32);
 const IV_LENGTH = 16;
 

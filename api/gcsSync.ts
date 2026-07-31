@@ -6,7 +6,49 @@ const bucketName = process.env.GCS_BUCKET_NAME || 'vnhk-db';
 const DB_DIR = path.join(process.cwd(), 'db');
 
 let storageInstance: Storage | null = null;
-let gcsSyncEnabled = true;
+// Đặt GCS_DISABLED=1 khi đã gắn ổ đĩa cố định vào db/ — lúc đó không cần GCS, và tắt hẳn
+// thì khỏi phải nhìn cảnh báo mỗi lần ghi.
+let gcsSyncEnabled = process.env.GCS_DISABLED !== '1';
+
+// ⚠️ NGUY HIỂM NHẤT TRONG FILE NÀY.
+// GCS hỏng bất kỳ lý do gì là code cũ đặt gcsSyncEnabled = false rồi CHẠY TIẾP như không
+// có chuyện gì: app vẫn lưu được, người dùng vẫn xếp đội bình thường, chỉ có một dòng log
+// lặng lẽ. Trên PaaS (Railway/Render...) ổ đĩa container là TẠM, nên lần deploy sau là
+// MẤT SẠCH mà không ai kịp biết.
+//
+// Không sửa được bằng cách bỏ tính năng chạy-không-cần-GCS (chạy máy nhà vẫn cần). Nên
+// thay bằng: kêu to, kêu lặp lại, và nói rõ hậu quả.
+//
+// MUỐN KHỎI LO HẲN: gắn ổ đĩa cố định (Railway Volume) vào thư mục db/ rồi đặt
+// GCS_DISABLED=1. Lúc đó dữ liệu nằm trên đĩa thật, không phụ thuộc Google.
+let daCanhBao = false;
+let soLanGhiHut = 0;
+
+function tatDongBo(lyDo: string) {
+  gcsSyncEnabled = false;
+  if (daCanhBao) return;
+  daCanhBao = true;
+  console.error('='.repeat(70));
+  console.error('[GCS Sync] ĐÃ TẮT ĐỒNG BỘ. Lý do: ' + lyDo);
+  console.error('[GCS Sync] Dữ liệu từ giờ CHỈ nằm trên đĩa của container.');
+  console.error('[GCS Sync] Nếu đang chạy trên PaaS: LẦN DEPLOY SAU LÀ MẤT HẾT.');
+  console.error('[GCS Sync] Khắc phục: gắn ổ đĩa cố định vào db/, hoặc sửa lại GCS.');
+  console.error('='.repeat(70));
+}
+
+// Nhắc lại mỗi 20 lần ghi. Cảnh báo một lần lúc khởi động rất dễ trôi mất giữa rừng log,
+// rồi ba ngày sau deploy phát là ngã ngửa. Đây là thứ đáng lải nhải.
+function ghiHut() {
+  if (process.env.GCS_DISABLED === '1') return;   // cố ý tắt thì thôi, không cằn nhằn
+  soLanGhiHut += 1;
+  if (soLanGhiHut % 20 === 1) {
+    console.warn(`[GCS Sync] ⚠️ Đã ghi ${soLanGhiHut} lần mà KHÔNG đồng bộ lên GCS. `
+      + 'Dữ liệu chỉ nằm trên đĩa container, deploy lại là mất.');
+  }
+}
+
+/** Có đang đồng bộ được không. Dùng cho endpoint kiểm tra sức khoẻ. */
+export const dongBoDangChay = () => gcsSyncEnabled;
 
 function getStorage() {
   if (!storageInstance) {
@@ -49,8 +91,7 @@ export async function downloadDbFromGCS(): Promise<void> {
     }
     console.log('[GCS Sync] Initial GCS download sync complete.');
   } catch (err: any) {
-    gcsSyncEnabled = false;
-    console.warn(`[GCS Sync] GCS download unavailable (${err.message || err}). Using local file storage.`);
+    tatDongBo(`không tải được dữ liệu từ GCS: ${err.message || err}`);
   }
 }
 
@@ -61,7 +102,7 @@ let syncTimeout: NodeJS.Timeout | null = null;
 let isSyncing = false;
 
 export function queueUpload(relativePath: string): void {
-  if (!gcsSyncEnabled) return;
+  if (!gcsSyncEnabled) { ghiHut(); return; }
   pendingDeletions.delete(relativePath);
   pendingUploads.add(relativePath);
   scheduleSync();
@@ -117,8 +158,7 @@ async function runSyncInBackground() {
 
     const [exists] = await bucket.exists();
     if (!exists) {
-      console.warn(`[GCS Sync] Bucket "${bucketName}" does not exist. Disabling GCS sync.`);
-      gcsSyncEnabled = false;
+      tatDongBo(`bucket "${bucketName}" không tồn tại`);
       isSyncing = false;
       return;
     }
@@ -149,10 +189,9 @@ async function runSyncInBackground() {
 
     console.log('[GCS Sync] Background sync complete.');
   } catch (err: any) {
-    gcsSyncEnabled = false;
+    tatDongBo(`lỗi khi đồng bộ: ${err.message || err}`);
     pendingUploads.clear();
     pendingDeletions.clear();
-    console.warn(`[GCS Sync] GCS sync encountered error (${err.message || err}). Disabling GCS background sync, continuing with local storage.`);
   } finally {
     isSyncing = false;
   }

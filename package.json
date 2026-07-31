@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start": "tsx server.ts"
+    "start": "NODE_ENV=production tsx server.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
