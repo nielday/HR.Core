@@ -1,5 +1,5 @@
 import { ROLE_OPTIONS } from '../constants';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { useTeamManager, useFilters, useModals } from '../controllers';
 import { Member, DiscordConfig } from '../models';
@@ -180,6 +180,12 @@ export default function App() {
     setIsAddMemberModalOpen
   } = modals;
 
+  // Nguồn đang xem, giữ trong ref vì checkStatus bị vòng poll giữ lại từ lần render đầu
+  // (useEffect chỉ phụ thuộc [isLoggedIn]) nên đọc thẳng teamManager.memberSource ở trong
+  // đó là đọc phải giá trị cũ.
+  const nguonDangXem = useRef(teamManager.memberSource);
+  useEffect(() => { nguonDangXem.current = teamManager.memberSource; }, [teamManager.memberSource]);
+
   const checkStatus = async () => {
     if (!isLoggedIn || !userGroup) return;
     try {
@@ -193,7 +199,10 @@ export default function App() {
       const newConnected = data.connected;
       
       setIsConnected(prev => {
-        if (prev && !newConnected) {
+        // Bot rớt kết nối thì chỉ xoá danh sách khi nó ĐANG lấy từ Discord. Nguồn "Thành
+        // viên" nằm trong DB của tool, bot sống hay chết cũng không liên quan; xoá nó đi là
+        // Railway khởi động lại một cái người dùng thấy trống trơn mà không hiểu vì sao.
+        if (prev && !newConnected && nguonDangXem.current !== 'custom') {
           clearUnassignedMembers();
         }
         return newConnected;
@@ -247,6 +256,22 @@ export default function App() {
     fetchDiscordConfig();
   }, [userGroup]);
 
+  // TỰ NẠP danh sách thành viên khi mở trang.
+  // Trước đây không có chỗ nào gọi refreshMembers lúc khởi động: nó chỉ chạy khi bấm nút
+  // refresh, khi đổi nguồn, hoặc sau khi thêm người. Nên vào trang là "Danh sách trống",
+  // ai cũng tưởng dữ liệu bay mất.
+  // ÉP nguồn 'custom' (Thành viên) chứ không dùng memberSource đang có: nguồn voice đòi một
+  // kênh voice, tự gọi nó lúc mở trang là bắn toast lỗi vào mặt người không dùng voice.
+  // Đổi sang voice thì ô chọn nguồn tự gọi refresh, không cần lo ở đây.
+  const daNapDanhSach = useRef('');
+  useEffect(() => {
+    if (!isLoggedIn || !userGroup) return;
+    if (daNapDanhSach.current === userGroup) return;   // mỗi nhóm chỉ tự nạp một lần
+    daNapDanhSach.current = userGroup;
+    teamManager.setMemberSource('custom');
+    refreshMembers('custom');
+  }, [isLoggedIn, userGroup]);
+
   const handleConnect = async () => {
     if (!userGroup) return;
     setIsConnecting(true);
@@ -268,7 +293,7 @@ export default function App() {
       const endpoint = isConnected ? `/api/disconnect/${userGroup}` : `/api/connect/${userGroup}`;
       const res = await fetch(endpoint, { method: 'POST' });
       if (res.ok) {
-        if (isConnected) {
+        if (isConnected && teamManager.memberSource !== 'custom') {
           clearUnassignedMembers();
         }
         setIsConnected(!isConnected);
