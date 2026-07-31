@@ -154,8 +154,15 @@ router.get('/custom-members/:groupID', async (req, res) => {
     const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
     const TRAN_MOI_LUOT = 8;
     try {
+      // ⚠️ ĐIỀU KIỆN PHẢI LÀ "CHƯA CÓ ẢNH THẬT", KHÔNG PHẢI "AVATAR RỖNG".
+      // Bản trước tôi lọc `!m.avatar` nên không bao giờ chạy: AddMemberModal.tsx:177 đã
+      // nhét sẵn ảnh GIẢ tự sinh `https://ui-avatars.com/api/?name=...` cho mọi người thêm
+      // tay. Trường avatar có giá trị, chỉ là giá trị vô dụng — chữ cái trên nền màu ngẫu
+      // nhiên, mà `name` lúc đó lại đang là dãy số Discord ID nên nhìn càng vô nghĩa.
+      // Ảnh Discord luôn ở cdn.discordapp.com; thứ gì khác coi như chưa có ảnh thật.
+      const laAnhThat = (v: any) => typeof v === 'string' && /(^|\/\/)cdn\.discordapp\.com\//.test(v);
       const canLay = groupMembers
-        .filter((m) => !m.avatar && (laSnowflake(m.id) || laSnowflake(m.name)))
+        .filter((m) => !laAnhThat(m.avatar) && (laSnowflake(m.id) || laSnowflake(m.name)))
         .slice(0, TRAN_MOI_LUOT);
 
       if (canLay.length) {
