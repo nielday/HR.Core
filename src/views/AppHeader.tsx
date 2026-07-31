@@ -209,8 +209,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
         {/* Discord Connection & Channel Selection */}
         <div className="flex items-center gap-2 rounded-md bg-[#2B2D31] p-1 border border-[#3F4147] ml-2">
+          {/* Ô dưới chọn KÊNH VOICE làm nguồn danh sách thành viên, không phải kênh đăng
+              poll (cái đó nằm riêng trong Cấu hình Discord). Trước đây không ghi gì nên ai
+              cũng tưởng là "kênh chung", chọn nhầm kênh chữ rồi nguồn voice báo lỗi. */}
           {discordChannels.length > 0 ? (
-            <select 
+            <select
+              title="Kênh VOICE dùng làm nguồn cho danh sách &quot;Đang trong kênh voice&quot;. Kênh đăng poll đặt riêng trong Cấu hình Discord."
               value={selectedChannelId}
               onChange={(e) => onChannelChange(e.target.value)}
               disabled={isConnecting}

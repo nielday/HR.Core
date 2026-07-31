@@ -65,7 +65,14 @@ router.get('/members/:groupID', async (req, res) => {
 
     if (!channel.isVoiceBased()) {
       console.error(`[Members API] Channel is not voice-based: ${channelId} (type: ${channel.type})`);
-      return res.status(400).json({ error: `Kênh Discord (ID: ${channelId}) không phải là kênh Voice.` });
+      // Thông báo phải NÓI CÁCH SỬA. Bản cũ chỉ báo "không phải kênh Voice" rồi thôi, người
+      // dùng không biết ô nào đang trỏ sai, cũng không biết là có đường vòng khác.
+      const ten = (channel as any).name ? `#${(channel as any).name}` : `ID ${channelId}`;
+      return res.status(400).json({
+        error: `Nguồn "Đang trong kênh voice" cần một kênh VOICE, nhưng ${ten} là kênh chữ. `
+          + 'Cách sửa: đổi ô chọn kênh trên thanh tiêu đề sang một kênh voice, '
+          + 'hoặc chuyển nguồn ở cột trái sang "Thành viên" nếu bạn không dùng danh sách theo voice.',
+      });
     }
 
     const voiceChannel = channel as any;
