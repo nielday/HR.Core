@@ -1,5 +1,6 @@
 import express from "express";
 import { loadDb, saveDb } from './localDb';
+import { getDiscordClient, normalizeDiscordName } from './common';
 
 const router = express.Router();
 
@@ -86,6 +87,29 @@ router.post('/member-config-by-discord/:groupID/:discordId', async (req, res) =>
     if (newConfig.type === undefined) {
       newConfig.type = 0;
     }
+
+    // Thành viên thêm TAY được lưu với khoá 'custom_<thời điểm>' và avatar rỗng, vì lúc đó
+    // chưa có Discord. Sau này gắn Discord ID vào thì KHÔNG chỗ nào đi lấy lại ảnh, nên
+    // người đó vĩnh viễn không có avatar dù đã có ID. Lấy luôn ở đây.
+    // Best-effort: bot chưa kết nối hoặc người đó rời server thì bỏ qua, đừng để hỏng
+    // cả việc lưu cấu hình chỉ vì thiếu cái ảnh.
+    if (!newConfig.avatar) {
+      try {
+        const client = await getDiscordClient(groupID);
+        const guildId = localData.groups[groupID]?.configs?.discord?.guildId;
+        if (client && guildId) {
+          const guild = await client.guilds.fetch(guildId);
+          const m = await guild.members.fetch(discordId);
+          if (m) {
+            newConfig.avatar = m.user.displayAvatarURL();
+            if (!newConfig.name && !localData.members[discordId].name) {
+              newConfig.name = normalizeDiscordName(m.displayName || m.user.username);
+            }
+          }
+        }
+      } catch { /* không lấy được ảnh thì thôi, cấu hình vẫn phải lưu được */ }
+    }
+
     localData.members[discordId] = { ...localData.members[discordId], ...newConfig };
 
     if (!localData.groups[groupID]) {

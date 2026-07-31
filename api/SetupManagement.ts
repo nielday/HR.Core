@@ -1,5 +1,6 @@
 import express from "express";
 import { loadDb, saveDb } from './localDb';
+import { getDiscordClient, normalizeDiscordName } from './common';
 
 const router = express.Router();
 
@@ -122,7 +123,42 @@ router.get('/custom-members/:groupID', async (req, res) => {
     
     if (memberIds.length === 0) return res.json([]);
 
-    const groupMembers = Object.values(localData.members).filter(m => memberIds.includes(m.id));
+    // Trả BẢN SAO: mấy object này lấy thẳng từ cache của loadDb, sửa vào là sửa luôn dữ
+    // liệu trong bộ nhớ mà không qua saveDb.
+    const groupMembers = Object.values(localData.members)
+      .filter((m) => memberIds.includes(m.id))
+      .map((m) => ({ ...m })) as any[];
+
+    // Làm tươi avatar từ Discord ngay lúc đọc.
+    // Ba lý do:
+    //   1. Bản ghi cũ của thành viên thêm tay có avatar rỗng, không tự có ảnh bao giờ.
+    //   2. URL avatar Discord CHẾT khi người ta đổi ảnh (đổi ảnh là đổi hash trong URL).
+    //   3. Bản ghi MÉO: thêm người lúc bot chưa kết nối thì tra Discord hỏng, tool sinh
+    //      khoá 'custom_<thời điểm>' và cất nguyên chuỗi vừa gõ vào ô TÊN. Nếu chuỗi đó
+    //      chính là Discord ID thì vẫn cứu được — dò cả `id` lẫn `name`.
+    // Dùng cache của discord.js nên không tốn request mỗi lần gọi. Hỏng thì trả nguyên
+    // danh sách — thiếu ảnh còn hơn mất cả danh sách.
+    const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
+    try {
+      const client = await getDiscordClient(groupID);
+      const guildId = localData.groups[groupID]?.configs?.discord?.guildId;
+      if (client && guildId && groupMembers.some((m) => laSnowflake(m.id) || laSnowflake(m.name))) {
+        const guild = await client.guilds.fetch(guildId);
+        await guild.members.fetch();                 // nạp cache một lần cho cả vòng lặp
+        for (const m of groupMembers) {
+          const did = laSnowflake(m.id) ? m.id.trim() : (laSnowflake(m.name) ? m.name.trim() : null);
+          if (!did) continue;
+          const dm = guild.members.cache.get(did);
+          if (!dm) continue;
+          m.avatar = dm.user.displayAvatarURL();
+          // Ô tên đang là dãy số Discord ID thì thay bằng tên thật cho dễ nhìn.
+          if (laSnowflake(m.name)) m.name = normalizeDiscordName(dm.displayName || dm.user.username);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[custom-members] Không làm tươi được avatar:', e?.message);
+    }
+
     res.json(groupMembers);
   } catch (error) {
     console.error('Error fetching custom members:', error);

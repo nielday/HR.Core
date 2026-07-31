@@ -56,12 +56,16 @@ router.get('/discord-user/:groupID', async (req, res) => {
     const localMember = localData.members[member.id];
     
     if (localMember) {
+      // ⚠️ THỨ TỰ SPREAD: `...localMember` phải nằm TRƯỚC. Trước đây nó ở cuối nên bản ghi
+      // đã lưu ĐÈ LÊN dữ liệu vừa lấy từ Discord — kể cả khi trường đó rỗng. Thành viên
+      // thêm tay có `avatar: ''`, thế là vừa lấy đúng ảnh xong lại bị xoá trắng ngay.
+      // Ý đúng: lấy bản lưu làm nền, rồi cho mấy trường TƯƠI ghi đè lên.
       return res.json({
+        ...localMember,
         id: member.id,
         name: normalizeDiscordName(member.displayName),
         avatar: member.user.displayAvatarURL(),
         isGlobal: true,
-        ...localMember
       });
     }
 
