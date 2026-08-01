@@ -2,6 +2,7 @@ import express from "express";
 import { Client, GatewayIntentBits } from 'discord.js';
 import { decrypt, encrypt, discordClients, invalidateBotConfigCache, getDiscordClient, setupInteractionHandler } from './common';
 import { loadDb, saveDb } from './localDb';
+import { batBuocQuanTri } from './auth';
 
 const router = express.Router();
 
@@ -16,7 +17,9 @@ router.get('/status/:groupID', async (req, res) => {
   }
 });
 
-router.get('/bot-config/:groupID', async (req, res) => {
+// CHỈ QUẢN TRỊ. Đường này trả về TOKEN BOT đã giải mã. Ai gọi được là chiếm được bot: đọc
+// mọi tin nhắn bot thấy, đăng bài mạo danh bot, và tuỳ quyền mà đá người khỏi server.
+router.get('/bot-config/:groupID', batBuocQuanTri, async (req, res) => {
   try {
     const { groupID } = req.params;
     const localData = loadDb();
@@ -67,7 +70,7 @@ router.post('/bot-config/:groupID/channel', async (req, res) => {
   }
 });
 
-router.post('/bot-config/:groupID', async (req, res) => {
+router.post('/bot-config/:groupID', batBuocQuanTri, async (req, res) => {
   try {
     const { groupID } = req.params;
     const { token, guildId, channelId, pollChannelId, channels } = req.body;
@@ -136,7 +139,7 @@ router.post('/bot-config/:groupID/voice-nguon', async (req, res) => {
   }
 });
 
-router.post('/connect/:groupID', async (req, res) => {
+router.post('/connect/:groupID', batBuocQuanTri, async (req, res) => {
   const { groupID } = req.params;
   let client = discordClients.get(groupID);
   
@@ -260,7 +263,7 @@ router.post('/connect/:groupID', async (req, res) => {
   }
 });
 
-router.post('/disconnect/:groupID', async (req, res) => {
+router.post('/disconnect/:groupID', batBuocQuanTri, async (req, res) => {
   const { groupID } = req.params;
   const client = discordClients.get(groupID);
   if (client) {

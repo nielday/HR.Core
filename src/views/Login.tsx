@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { LogIn, User, Lock, RefreshCw, Globe } from 'lucide-react';
 import { Toast, ToastType } from './Toast';
 import { useTranslation } from 'react-i18next';
+import { luuPhien } from '../lib/phien';
 
 interface LoginProps {
   onLogin: (groupID: string, username: string, rule: number) => void;
@@ -37,6 +38,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        // Cất phiên TRƯỚC khi báo cho App, vì App bắt tay gọi API ngay sau đó. Cất sau là
+        // mấy lời gọi đầu tiên đi ra tay không và ăn 401.
+        luuPhien(data.token || '');
         onLogin(data.groupID, data.username, data.rule);
       } else {
         setToast({ message: data.error || t('login.failed'), type: 'error' });

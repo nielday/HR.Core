@@ -9,13 +9,20 @@ import unassignedSidebarRouter from './api/UnassignedSidebar';
 import matchResultModalRouter from './api/MatchResultModal';
 import tacticsRouter from './api/tactics';
 import postLineupRouter from './api/PostLineup';
+import { batBuocDangNhap } from './api/auth';
 
 export const app = express();
 
 app.use(express.json({ limit: '50mb' }));
 
-// Register routers
+// Đăng nhập phải đứng TRƯỚC chốt chặn, vì chính nó là chỗ phát phiên.
 app.use('/api', loginRouter);
+
+// CHỐT CHẶN. Mọi thứ đăng ký sau dòng này đều phải có phiên hợp lệ, trừ vài đường công khai
+// được liệt kê trong auth.ts. Đặt ở đây chứ không rắc từng route: quên gắn vào một route là
+// route đó hở, mà hở thì không ai thấy cho tới lúc có người khai thác.
+app.use('/api', batBuocDangNhap);
+
 app.use('/api', discordConfigRouter);
 app.use('/api', setupManagementRouter);
 app.use('/api', addMemberModalRouter);

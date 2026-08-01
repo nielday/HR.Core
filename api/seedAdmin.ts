@@ -1,4 +1,5 @@
 import { loadDb, saveDb } from './localDb';
+import { bamMatKhau } from './auth';
 
 // =====================================================================
 // TẠO TÀI KHOẢN QUẢN TRỊ LÚC KHỞI ĐỘNG, NẾU CHƯA CÓ AI.
@@ -11,8 +12,8 @@ import { loadDb, saveDb } from './localDb';
 // Tiện thể bỏ luôn mật khẩu ghi cứng trong git ('riku@123' nằm trong repo, ai đọc được
 // repo là đăng nhập được trang đang chạy).
 //
-// ⚠️ Mật khẩu vẫn lưu THÔ (Login.ts so sánh chuỗi trực tiếp). Đây chỉ vá chỗ bị khoá
-// ngoài, chưa phải sửa phần xác thực.
+// Mật khẩu lưu dạng BĂM ngay từ đầu. Biến môi trường ADMIN_PASS vẫn là chữ thật, nhưng nó
+// chỉ nằm trong cấu hình Railway chứ không rơi vào file db.
 // =====================================================================
 
 export function seedAdmin(): void {
@@ -37,7 +38,7 @@ export function seedAdmin(): void {
   if (!db.groups[groupID]) {
     db.groups[groupID] = { members: [], accounts: {}, configs: {}, setups: {}, polls: {}, tactics: {} } as any;
   }
-  (db.groups[groupID] as any).accounts = { ...(db.groups[groupID] as any).accounts, [user]: { password: pass, rule: 2 } };
+  (db.groups[groupID] as any).accounts = { ...(db.groups[groupID] as any).accounts, [user]: { password: bamMatKhau(pass), rule: 2 } };
   saveDb(db);
   console.log(`[seedAdmin] Đã tạo tài khoản quản trị "${user}" cho nhóm ${groupID}.`);
 }

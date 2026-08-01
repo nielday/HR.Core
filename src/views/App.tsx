@@ -4,6 +4,7 @@ import { AnimatePresence } from 'motion/react';
 import { useTeamManager, useFilters, useModals } from '../controllers';
 import { Member, DiscordConfig, VoiceChannel } from '../models';
 import { isTowerArea, isPVPArea, normalizeDiscordName } from '../utils';
+import { layPhien, luuPhien, xoaPhien } from '../lib/phien';
 import { useTranslation } from 'react-i18next';
 import {
   AppHeader,
@@ -34,11 +35,18 @@ export default function App() {
   const groupIdFromUrl = searchParams.get('group');
 
   // Auth State
+  // Phải CÓ PHIÊN mới coi là đã đăng nhập. Trước đây chỉ nhìn cờ isLoggedIn trong
+  // localStorage, mà cờ đó người dùng tự đặt được. Giờ không có phiên thì vào cũng chỉ thấy
+  // màn hình trắng vì mọi lời gọi API đều bị chặn, thà đưa thẳng về màn đăng nhập.
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('isLoggedIn') === 'true';
+    return localStorage.getItem('isLoggedIn') === 'true' && !!layPhien();
   });
+  // KHÔNG lấy nhóm từ thanh địa chỉ nữa. Trước đây ?group=<số> ghi đè nhóm đang đăng nhập,
+  // đúng là lỗ "đổi số trên URL để xem nhóm khác". Máy chủ đã chặn rồi, nhưng để nguyên ở
+  // đây thì giao diện vẫn đi đòi nhóm lạ và ăn 403 loạn xạ.
+  // Trang xem công khai (/view) nhận nhóm riêng qua thuộc tính, không dùng chỗ này.
   const [userGroup, setUserGroup] = useState(() => {
-    return groupIdFromUrl || localStorage.getItem('userGroup') || '';
+    return localStorage.getItem('userGroup') || '';
   });
   const [username, setUsername] = useState(() => {
     return localStorage.getItem('username') || '';
@@ -69,6 +77,7 @@ export default function App() {
           
           if (response.ok) {
             const data = await response.json();
+            luuPhien(data.token || '');   // cất phiên trước, App gọi API ngay sau đây
             handleLogin(data.groupID, data.username, data.rule || 0);
             // Remove token from URL
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -111,10 +120,7 @@ export default function App() {
     setUserGroup('');
     setUsername('');
     setUserRole(0);
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userGroup');
-    localStorage.removeItem('username');
-    localStorage.removeItem('userRole');
+    xoaPhien();   // xoá cả phiên lẫn mấy cờ cũ trong localStorage
   };
 
   const {
