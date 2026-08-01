@@ -153,6 +153,8 @@ export const en = {
       voice: {
         title: 'Voice channels to pull from',
         reload: 'Ask Discord again for channels and headcount',
+        collapse: 'Collapse the channel list',
+        expand: 'Open the channel list to pick channels',
         none: 'No voice channel visible to the bot',
         loadError: 'Could not load voice channels',
         noArea: 'No area assigned',

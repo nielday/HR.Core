@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Filter, UserPlus, BarChart2, Copy, GitMerge } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, RefreshCw, Search, Filter, UserPlus, BarChart2, Copy, GitMerge } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { Member, VoiceChannel } from '../models';
@@ -119,6 +119,24 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isCopied, setIsCopied] = useState(false);
+
+  // Khung chọn kênh voice GẬP LẠI ĐƯỢC.
+  // Server nhiều kênh thì danh sách dài bằng cả cột, đẩy hết thành viên xuống dưới màn hình,
+  // trong khi việc chính của cột này là NHÌN NGƯỜI. Chọn kênh là việc làm một lần rồi thôi.
+  // Mặc định: chưa tick kênh nào thì MỞ để người mới thấy mà dùng; tick rồi thì gập, vì lúc
+  // đó việc chọn coi như xong. Người dùng tự bấm thì nhớ lựa chọn đó, khỏi gập lại mỗi lần.
+  const [moKenhVoice, setMoKenhVoice] = useState<boolean | null>(() => {
+    try {
+      const v = localStorage.getItem('voiceMoRong');
+      return v === null ? null : v === '1';
+    } catch { return null; }
+  });
+  const moRong = moKenhVoice ?? voiceChon.length === 0;
+  const doiMoRong = () => {
+    const moi = !moRong;
+    setMoKenhVoice(moi);
+    try { localStorage.setItem('voiceMoRong', moi ? '1' : '0'); } catch { /* chế độ riêng tư */ }
+  };
 
   const handleCopyNames = () => {
     if (sortedUnassigned.length === 0) return;
@@ -243,25 +261,37 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                         {memberSource === 'discord' && (
                           <div className="rounded-md border border-[#3F4147] bg-[#1E1F22]/60 p-2 flex flex-col gap-1.5">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-[#949BA4]">
-                                {t('sidebar.voice.title')}
-                              </span>
+                              <button
+                                onClick={doiMoRong}
+                                className="flex min-w-0 flex-1 items-center gap-1 text-left text-[10px] font-bold uppercase tracking-wide text-[#949BA4] hover:text-[#DBDEE1]"
+                                title={moRong ? t('sidebar.voice.collapse') : t('sidebar.voice.expand')}
+                              >
+                                {moRong ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+                                <span className="truncate">{t('sidebar.voice.title')}</span>
+                                {/* Gập rồi vẫn phải biết đang lấy mấy kênh, không thì mở ra mở vào
+                                    chỉ để kiểm tra xem mình đã tick chưa. */}
+                                {!moRong && voiceChon.length > 0 && (
+                                  <span className="ml-auto shrink-0 rounded bg-[#5865F2]/25 px-1.5 py-0.5 text-[10px] font-bold normal-case text-[#a5b0ff]">
+                                    {voiceChon.length} kênh
+                                  </span>
+                                )}
+                              </button>
                               <button
                                 onClick={onReloadVoice}
                                 disabled={!isConnected}
                                 title={t('sidebar.voice.reload')}
-                                className="rounded p-0.5 text-[#949BA4] hover:bg-[#3F4147] hover:text-[#DBDEE1] disabled:opacity-40"
+                                className="ml-1 shrink-0 rounded p-0.5 text-[#949BA4] hover:bg-[#3F4147] hover:text-[#DBDEE1] disabled:opacity-40"
                               >
                                 <RefreshCw size={12} />
                               </button>
                             </div>
 
-                            {voiceLoi && <div className="text-[10px] text-amber-400/90">{voiceLoi}</div>}
-                            {!voiceLoi && voiceChannels.length === 0 && (
+                            {moRong && voiceLoi && <div className="text-[10px] text-amber-400/90">{voiceLoi}</div>}
+                            {moRong && !voiceLoi && voiceChannels.length === 0 && (
                               <div className="text-[10px] italic text-[#949BA4]">{t('sidebar.voice.none')}</div>
                             )}
 
-                            {voiceChannels.map((c) => {
+                            {moRong && voiceChannels.map((c) => {
                               const daTick = voiceChon.includes(c.id);
                               return (
                                 <div key={c.id} className="flex flex-col gap-1">
@@ -299,7 +329,7 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                               );
                             })}
 
-                            {voiceChannels.length > 0 && (
+                            {moRong && voiceChannels.length > 0 && (
                               <label
                                 className="mt-1 flex items-start gap-1.5 cursor-pointer text-[10px] leading-tight text-[#949BA4] border-t border-[#3F4147] pt-1.5"
                                 title={t('sidebar.voice.onlyMembersHint')}
