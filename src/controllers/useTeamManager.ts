@@ -109,11 +109,15 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         const data = await res.json();
         setActivePoll(data);
       } else {
-        const err = await res.json();
-        console.error('Failed to create poll:', err);
+        // NÉM NGUYÊN câu của máy chủ. Nuốt vào console rồi hiện câu chung chung "kiểm tra
+        // lại quyền của Bot" thì người dùng không biết thiếu quyền GÌ ở kênh NÀO, phải mở
+        // console mới thấy sự thật.
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || t('header.createPollError'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating poll:', err);
+      throw err;
     }
   };
 
@@ -139,13 +143,13 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         }
         return true;
       } else {
-        const err = await res.json();
-        console.error('Failed to create GvG poll:', err);
-        return false;
+        // Xem chú thích ở handleCreatePoll: ném nguyên câu của máy chủ, đừng nuốt.
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || t('header.pollErrorBot'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating GvG poll:', err);
-      return false;
+      throw err;
     }
   };
 

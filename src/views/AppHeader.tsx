@@ -122,8 +122,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       });
       showToast(t('header.createPollSuccess'), 'success');
       setIsPollModalOpen(false);
-    } catch (error) {
-      showToast(t('header.createPollError'), 'error');
+    } catch (error: any) {
+      // Nguyên văn từ máy chủ: thiếu quyền gì, ở kênh nào, sửa ở đâu.
+      showToast(error?.message || t('header.createPollError'), 'error');
     } finally {
       setIsPollActionLoading(false);
     }
@@ -189,7 +190,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         setPollError(t('header.pollErrorBot'));
         showToast(t('header.openGvgError'), 'error');
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Hiện NGUYÊN câu của máy chủ trong khung đỏ. Câu đó nói rõ thiếu quyền gì ở kênh nào
+      // và sửa ở đâu; thay bằng câu chung chung là bắt người dùng đi mở console.
+      setPollError(error?.message || t('header.pollErrorBot'));
       showToast(t('header.openGvgError'), 'error');
     } finally {
       setIsGvgActionLoading(false);

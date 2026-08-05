@@ -1,8 +1,43 @@
 import express from "express";
+import { PermissionFlagsBits } from 'discord.js';
 import { normalizeDiscordName, getDiscordClient, pollResultsCache, CACHE_TTL } from './common';
 import { loadDb, saveDb } from './localDb';
 
 const router = express.Router();
+
+/**
+ * Bot còn thiếu quyền nào ở kênh này.
+ *
+ * Discord trả về đúng hai chữ "Missing Permissions" cho mọi trường hợp thiếu quyền, không
+ * nói thiếu cái gì cũng không nói ở kênh nào. Bản cũ ném thẳng chuỗi đó ra màn hình, người
+ * dùng chỉ biết là hỏng chứ không biết đi sửa ở đâu.
+ *
+ * Đăng bình chọn cần RIÊNG một quyền "Tạo bình chọn", tách khỏi "Gửi tin nhắn". Đây là chỗ
+ * hay dính nhất: bot đăng đội hình vào kênh đó ngon lành nhưng tạo poll thì trượt, nhìn vào
+ * tưởng bot bị chặn cả kênh.
+ */
+function thieuQuyen(channel: any, client: any): string[] {
+  const q = channel?.permissionsFor?.(client.user);
+  if (!q) return [];   // nhắn riêng, không phải kênh server -> không có bảng quyền để soi
+
+  const can: [bigint, string][] = [
+    [PermissionFlagsBits.ViewChannel, 'Xem kênh'],
+    [PermissionFlagsBits.SendMessages, 'Gửi tin nhắn'],
+  ];
+  // Quyền này Discord mới thêm, phòng bản discord.js cũ chưa có hằng số.
+  const quyenPoll = (PermissionFlagsBits as any).SendPolls;
+  if (quyenPoll) can.push([quyenPoll, 'Tạo bình chọn (Create Polls)']);
+
+  return can.filter(([bit]) => !q.has(bit)).map(([, ten]) => ten);
+}
+
+function loiQuyen(tenKenh: string, thieu: string[]): string {
+  const ds = thieu.length ? `: ${thieu.join(', ')}` : '';
+  return `Bot thiếu quyền ở kênh ${tenKenh}${ds}. `
+    + 'Cách sửa: vào Discord, chuột phải kênh đó, Chỉnh sửa kênh, mục Quyền, thêm role của bot '
+    + 'và bật các quyền trên. Lưu ý "Tạo bình chọn" là quyền RIÊNG, có "Gửi tin nhắn" rồi vẫn '
+    + 'có thể thiếu nó.';
+}
 
 router.post('/poll/:groupID', async (req, res) => {
   const { groupID } = req.params;
@@ -19,12 +54,27 @@ router.post('/poll/:groupID', async (req, res) => {
     // kênh VOICE (tool bắt buộc voice để lấy danh sách thành viên) -> poll chui vào khung
     // chat của kênh voice, báo thành công mà không ai thấy.
     const channelId = bodyChannelId || data.pollChannelId || data.channelId;
-    const channel = await client.channels.fetch(channelId);
-    
-    if (!channel || !channel.isTextBased()) {
-      return res.status(400).json({ error: 'Channel does not support text messages' });
+    if (!channelId) {
+      return res.status(400).json({ error: 'Chưa chọn kênh đăng poll. Vào Cấu hình Discord chọn kênh chữ để đăng poll.' });
     }
-    
+    const channel: any = await client.channels.fetch(channelId).catch(() => null);
+
+    if (!channel) {
+      return res.status(400).json({ error: `Không mở được kênh (ID: ${channelId}). Kênh đã bị xoá, hoặc bot không có quyền Xem kênh.` });
+    }
+    if (!channel.isTextBased()) {
+      return res.status(400).json({ error: `Kênh ${channel.name ? `#${channel.name}` : channelId} không nhận tin nhắn. Chọn một kênh chữ để đăng poll.` });
+    }
+
+    const tenKenh = channel.name ? `#${channel.name}` : `ID ${channelId}`;
+
+    // Soi quyền TRƯỚC KHI gửi. Để Discord từ chối rồi mới đoán ngược thì chỉ có đúng hai chữ
+    // "Missing Permissions" mà lần.
+    const thieu = thieuQuyen(channel, client);
+    if (thieu.length) {
+      return res.status(403).json({ error: loiQuyen(tenKenh, thieu) });
+    }
+
     const pollQuestion = question || "Mọi người tiếp tục đánh hay nghỉ?";
     const pollAnswers = (answers && Array.isArray(answers) && answers.length > 0) 
       ? answers.map((a: string) => ({ text: a }))
@@ -34,15 +84,26 @@ router.post('/poll/:groupID', async (req, res) => {
           { text: "Dự bị (Nhường slot, sẽ tham gia nếu thiếu người)" }
         ];
 
-    const message = await (channel as any).send({
-      poll: {
-        question: { text: pollQuestion },
-        answers: pollAnswers,
-        allowMultiselect: allowMultiselect ?? false,
-        duration: duration ?? 168
+    let message: any;
+    try {
+      message = await channel.send({
+        poll: {
+          question: { text: pollQuestion },
+          answers: pollAnswers,
+          allowMultiselect: allowMultiselect ?? false,
+          duration: duration ?? 168
+        }
+      });
+    } catch (e: any) {
+      // 50013 = Missing Permissions. Bảng quyền ở trên có thể nói "đủ" mà vẫn trượt: quyền
+      // theo role bị một overwrite khác của kênh đè xuống. Vẫn phải chỉ đường chứ đừng ném
+      // nguyên chuỗi tiếng Anh của Discord ra màn hình.
+      if (e?.code === 50013) {
+        return res.status(403).json({ error: loiQuyen(tenKenh, thieuQuyen(channel, client)) });
       }
-    });
-    
+      throw e;
+    }
+
     const pollState = {
       messageId: message.id,
       channelId: message.channelId,
