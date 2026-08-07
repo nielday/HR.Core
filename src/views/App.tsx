@@ -337,7 +337,15 @@ export default function App() {
     try {
       // Ưu tiên danh sách kênh voice đã tick. Chưa tick cái nào thì mới rơi về ô chọn kênh
       // trên thanh tiêu đề, để người chưa dùng tính năng này không thấy khác gì.
-      const kenh = channelId ?? (voiceChon.length ? voiceChon : selectedChannelId);
+      //
+      // NHƯNG chỉ rơi về khi ô đó ĐÚNG LÀ kênh voice. Ô trên thanh tiêu đề hay trỏ vào kênh
+      // chữ (Bang Chiến, tám tám...), đưa nó vào đây là chắc chắn lỗi "kênh chữ, không phải
+      // kênh voice" dù người dùng chẳng làm gì sai. Không có kênh voice nào thì gửi danh
+      // sách rỗng, để nguồn bình chọn tự lấy người từ bảng bình chọn.
+      const laKenhVoice = (id: string) => voiceChannels.some((c) => c.id === id);
+      const kenh = channelId ?? (voiceChon.length
+        ? voiceChon
+        : (selectedChannelId && laKenhVoice(selectedChannelId) ? [selectedChannelId] : []));
       await refreshMembers(source, gvgIndex, kenh, chiThanhVien);
     } finally {
       setIsRefreshing(false);

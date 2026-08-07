@@ -983,12 +983,19 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
       const fetchPromises: Promise<any>[] = [];
       
       // 1. Fetch members (Discord or Custom)
-      if (source === 'discord' || source === 'poll' || source === 'gvg') {
+      const dsKenhVao = (Array.isArray(channelId) ? channelId : channelId ? [channelId] : []).filter(Boolean);
+      // Nguồn bình chọn mà KHÔNG có kênh voice nào thì đừng gọi sang bên đó. Người vẫn lấy
+      // đủ từ bảng bình chọn, còn gọi bừa là máy chủ tự đoán kênh rồi trả về một lỗi chẳng
+      // liên quan gì tới việc người dùng vừa làm.
+      const boQuaVoice = (source === 'poll' || source === 'gvg') && !dsKenhVao.length;
+
+      if (boQuaVoice) {
+        fetchPromises.push(Promise.resolve({ members: [] }));
+      } else if (source === 'discord' || source === 'poll' || source === 'gvg') {
         const url = new URL(`/api/members/${groupID}`, window.location.origin);
         // Nhiều kênh: bang chiến chia sẵn voice công và voice thủ, đọc một kênh là thiếu nửa đội.
-        const dsKenh = (Array.isArray(channelId) ? channelId : channelId ? [channelId] : []).filter(Boolean);
-        if (dsKenh.length) {
-          url.searchParams.append('channelIDs', dsKenh.join(','));
+        if (dsKenhVao.length) {
+          url.searchParams.append('channelIDs', dsKenhVao.join(','));
         }
         fetchPromises.push(fetch(url.toString()).then(async res => {
           if (!res.ok) {
