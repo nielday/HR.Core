@@ -1238,7 +1238,13 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         if (source === 'poll' && data.participationStatus === 'none') {
           return;
         }
-        if (source === 'gvg' && gvgResults && !gvgResults.includes(id)) {
+        // Danh sách người bỏ phiếu là DISCORD ID, còn khoá ở đây có thể là 'custom_<thời
+        // điểm>' của bản ghi đã lưu (từ lúc tôi cho khớp người theo discordId để khỏi đẻ ra
+        // hai bản cho cùng một người). So mỗi khoá là hụt đúng những người ĐÃ CÓ trong danh
+        // sách bang, còn người lạ thì lại hiện, ngược hoàn toàn với lẽ thường.
+        // Triệu chứng: lựa chọn có 3 phiếu mà danh sách trống trơn.
+        if (source === 'gvg' && gvgResults
+          && !gvgResults.includes(id) && !(data.discordId && gvgResults.includes(data.discordId))) {
           return;
         }
         newUnassigned.push({
