@@ -31,6 +31,18 @@ function thieuQuyen(channel: any, client: any): string[] {
   return can.filter(([bit]) => !q.has(bit)).map(([, ten]) => ten);
 }
 
+/**
+ * Chuẩn hoá tên lựa chọn trước khi so.
+ *
+ * Discord CẮT khoảng trắng thừa ở đầu và cuối tên lựa chọn, còn tool thì lưu nguyên chuỗi
+ * người dùng gõ. Gõ lỡ tay một dấu cách cuối là hai bên lệch nhau vĩnh viễn.
+ * Hậu quả thật đã đo được trên máy chủ: lựa chọn "Trận 4 tùy tâm trạng " (21 ký tự) trong DB
+ * không khớp "Trận 4 tùy tâm trạng" (20 ký tự) của Discord, nên bảng kết quả THÊM MỚI một
+ * lựa chọn thứ 5 chứa 4 người vote, còn lựa chọn thứ 4 mà giao diện đang trỏ tới thì rỗng.
+ * Nhìn từ ngoài: "vote 4 người mà danh sách trống".
+ */
+const chuanTen = (s: any) => String(s ?? '').trim();
+
 function loiQuyen(tenKenh: string, thieu: string[]): string {
   const ds = thieu.length ? `: ${thieu.join(', ')}` : '';
   return `Bot thiếu quyền ở kênh ${tenKenh}${ds}. `
@@ -75,9 +87,12 @@ router.post('/poll/:groupID', async (req, res) => {
       return res.status(403).json({ error: loiQuyen(tenKenh, thieu) });
     }
 
-    const pollQuestion = question || "Mọi người tiếp tục đánh hay nghỉ?";
-    const pollAnswers = (answers && Array.isArray(answers) && answers.length > 0) 
-      ? answers.map((a: string) => ({ text: a }))
+    const pollQuestion = chuanTen(question) || "Mọi người tiếp tục đánh hay nghỉ?";
+    // CẮT khoảng trắng thừa ngay từ lúc tạo. Discord cắt của nó, mình không cắt thì hai bên
+    // lệch nhau và mọi lần đọc kết quả sau này đều trượt. Vá chỗ đọc chỉ chữa được poll đã
+    // lỡ tạo; chặn ở đây mới hết đẻ thêm.
+    const pollAnswers = (answers && Array.isArray(answers) && answers.length > 0)
+      ? answers.map((a: string) => ({ text: chuanTen(a) })).filter((a: any) => a.text)
       : [
           { text: "Tham gia" },
           { text: "Không tham gia" },
@@ -111,11 +126,14 @@ router.post('/poll/:groupID', async (req, res) => {
       createdAt: Date.now(),
       isGvg: isGvg || false,
       answers: pollAnswers.map((a: any) => a.text),
-      optionMappings: optionMappings || {
-        "Tham gia": 1,
-        "Không tham gia": 0,
-        "Dự bị (Nhường slot, sẽ tham gia nếu thiếu người)": 2
-      }
+      // Khoá của bảng ánh xạ cũng phải chuẩn hoá, không thì nó lệch với answers vừa cắt ở trên.
+      optionMappings: optionMappings
+        ? Object.fromEntries(Object.entries(optionMappings).map(([k, v]) => [chuanTen(k), v]))
+        : {
+            "Tham gia": 1,
+            "Không tham gia": 0,
+            "Dự bị (Nhường slot, sẽ tham gia nếu thiếu người)": 2
+          }
     };
     
     const pollType = req.query.type === 'gvg' ? 'gvg' : 'regular';
@@ -260,7 +278,10 @@ router.get('/poll/results/:groupID', async (req, res) => {
           avatar: v.displayAvatarURL()
         }));
         
-        const optIndex = results.options.findIndex((opt: any) => opt.text === text);
+        // So theo tên ĐÃ CHUẨN HOÁ. So chuỗi thô là lệch ngay khi có dấu cách thừa, và nhánh
+        // "không khớp" bên dưới lại đẻ thêm một lựa chọn mới ở cuối, đúng chỗ mà giao diện
+        // không bao giờ trỏ tới.
+        const optIndex = results.options.findIndex((opt: any) => chuanTen(opt.text) === chuanTen(text));
         if (optIndex !== -1) {
           results.options[optIndex].users = userObjects;
         } else {
@@ -277,7 +298,11 @@ router.get('/poll/results/:groupID', async (req, res) => {
           avatar: v.displayAvatarURL()
         }));
 
-        const mapping = pollState.optionMappings?.[text];
+        // Bảng ánh xạ cũng khoá theo TÊN nên dính đúng bẫy dấu cách. Tra thẳng trước, trượt
+        // thì dò lại theo tên đã chuẩn hoá.
+        const bang = pollState.optionMappings || {};
+        const mapping = bang[text]
+          ?? Object.entries(bang).find(([k]) => chuanTen(k) === chuanTen(text))?.[1];
         if (mapping === 1) {
           results.continue.push(...userObjects);
         } else if (mapping === 2) {
