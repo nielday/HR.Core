@@ -1,6 +1,9 @@
 import express from "express";
+import fs from 'fs';
+import path from 'path';
 import { loadDb, saveDb } from './localDb';
 import { getDiscordClient, normalizeDiscordName } from './common';
+import { batBuocQuanTri } from './auth';
 
 const router = express.Router();
 
@@ -389,6 +392,122 @@ router.post('/custom-members/:groupID/don-trung', async (req, res) => {
   } catch (error: any) {
     console.error('Error deduping members:', error);
     res.status(500).json({ error: error.message || 'Không dọn được bản ghi trùng' });
+  }
+});
+
+// =====================================================================
+// ĐỔI KHOÁ BẢN GHI SANG DISCORD ID.
+//
+// Khoá hiện tại của người thêm tay là 'custom_<mốc thời gian>', tức đồng hồ máy lúc bấm nút.
+// Nó duy nhất theo THỜI ĐIỂM BẤM, không duy nhất theo NGƯỜI: thêm cùng một người hai lần là
+// ra hai bản ghi. Và Discord không biết dãy số đó là gì, nên mọi việc cần nói chuyện với
+// Discord đều trượt.
+// Đây là gốc của: avatar không lên, mention không gắn được, vũ khí trống, người nhân đôi,
+// nguồn bình chọn lọc mất người nhà. Năm triệu chứng, một bệnh.
+//
+// AN TOÀN:
+//   - Có chế độ XEM TRƯỚC (?thu=1): tính toán và báo cáo, không đụng vào dữ liệu.
+//   - Chạy thật thì SAO LƯU nguyên trạng vào db/sao-luu/ trước khi ghi. Thư mục đó nằm
+//     ngoài mấy thư mục loadDb đọc nên không ảnh hưởng gì.
+//   - Sửa luôn mọi chỗ đang trỏ tới khoá cũ: danh sách nhóm và các bài xếp đã lưu. Bỏ bước
+//     này là đội hình đã xếp trỏ vào bản ghi không còn tồn tại.
+//   - Bản ghi không moi ra được Discord ID thì ĐỂ NGUYÊN, không đụng, không xoá.
+//
+// KHÔNG chạm vào poll: bảng bình chọn định danh người bằng Discord ID của chính Discord,
+// không liên quan gì tới khoá bản ghi. Đăng ký đang mở vẫn chạy bình thường.
+// =====================================================================
+router.post('/custom-members/:groupID/doi-khoa', batBuocQuanTri, async (req, res) => {
+  try {
+    const xemTruoc = req.query.thu === '1';
+    const localData = loadDb();
+
+    type Viec = { tu: string; den: string; gop: boolean };
+    const viec: Viec[] = [];
+    const khongMoiDuoc: string[] = [];
+
+    for (const [rid, m] of Object.entries<any>(localData.members || {})) {
+      if (laSnowflake(rid)) continue;                 // đã đúng khoá rồi
+      const did = moiDiscordId({ ...m, id: rid });
+      if (!did) { khongMoiDuoc.push(rid); continue; } // không có gì để moi, để nguyên
+      viec.push({ tu: rid, den: did, gop: !!localData.members[did] });
+    }
+
+    // Đếm trước xem sẽ phải sửa bao nhiêu chỗ đang trỏ tới khoá cũ.
+    const doi = new Map(viec.map((v) => [v.tu, v.den]));
+    let thamChieuNhom = 0;
+    let thamChieuBaiXep = 0;
+    for (const g of Object.values(localData.groups)) {
+      for (const id of g.members || []) if (doi.has(id)) thamChieuNhom++;
+      for (const st of Object.values<any>(g.setups || {})) {
+        for (const area of st.areas || []) {
+          for (const team of area.teams || []) {
+            for (const mem of team.members || []) if (doi.has(mem.id)) thamChieuBaiXep++;
+          }
+        }
+      }
+    }
+
+    const bao = {
+      xemTruoc,
+      soDoiKhoa: viec.length,
+      soGopVaoBanDaCo: viec.filter((v) => v.gop).length,
+      soDeNguyen: khongMoiDuoc.length,
+      thamChieuNhom,
+      thamChieuBaiXep,
+      // Che bớt id trong phản hồi, bản đầy đủ chỉ ghi vào log máy chủ.
+      chiTiet: viec.map((v) => ({ tu: v.tu, den: `...${v.den.slice(-4)}`, gop: v.gop })),
+    };
+
+    if (xemTruoc || !viec.length) return res.json({ success: true, ...bao });
+
+    // SAO LƯU trước khi đụng vào bất cứ thứ gì.
+    const thuMuc = path.join(process.cwd(), 'db', 'sao-luu');
+    if (!fs.existsSync(thuMuc)) fs.mkdirSync(thuMuc, { recursive: true });
+    const fileSaoLuu = path.join(thuMuc, `db-${Date.now()}.json`);
+    fs.writeFileSync(fileSaoLuu, JSON.stringify(localData, null, 2), 'utf8');
+    console.log(`[doi-khoa] Đã sao lưu vào ${fileSaoLuu}`);
+
+    for (const v of viec) {
+      const nguon = localData.members[v.tu];
+      if (!nguon) continue;
+
+      if (v.gop) {
+        // Đích đã tồn tại: điền vào những ô ĐANG TRỐNG của đích, không ghi đè thứ đã có.
+        const dich = localData.members[v.den] as any;
+        for (const [k, gt] of Object.entries(nguon)) {
+          if (k === 'id') continue;
+          const dangCo = dich[k];
+          const rong = dangCo === undefined || dangCo === null || dangCo === ''
+            || (Array.isArray(dangCo) && !dangCo.length);
+          if (rong && gt !== undefined && gt !== null && gt !== '') dich[k] = gt;
+        }
+      } else {
+        localData.members[v.den] = { ...nguon, id: v.den, discordId: v.den };
+      }
+      delete localData.members[v.tu];
+    }
+
+    // Trỏ lại mọi chỗ đang nhắc tới khoá cũ.
+    for (const g of Object.values(localData.groups)) {
+      if (g.members) g.members = Array.from(new Set(g.members.map((id) => doi.get(id) || id)));
+      for (const st of Object.values<any>(g.setups || {})) {
+        for (const area of st.areas || []) {
+          for (const team of area.teams || []) {
+            team.members = (team.members || []).map((mem: any) => {
+              const den = doi.get(mem.id);
+              return den ? { ...mem, id: den, discordId: den } : mem;
+            });
+          }
+        }
+      }
+    }
+
+    saveDb(localData);
+    console.log(`[doi-khoa] Xong: đổi ${viec.length} khoá, để nguyên ${khongMoiDuoc.length}.`);
+    res.json({ success: true, ...bao, daSaoLuu: path.basename(fileSaoLuu) });
+  } catch (error: any) {
+    console.error('Error re-keying members:', error);
+    res.status(500).json({ error: error.message || 'Không đổi khoá được' });
   }
 });
 
