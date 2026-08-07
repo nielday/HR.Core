@@ -183,10 +183,19 @@ export const MemberCard: React.FC<MemberCardProps> = ({
       {/* Avatar Section */}
       <div className="relative shrink-0 ml-[1px]">
         <RankFrame rank={member.rank} size={56} isOffline={isOffline}>
-          <img 
-            src={member.avatar} 
-            alt={displayName} 
-            className="h-full w-full object-cover pointer-events-none" 
+          <img
+            src={member.avatar}
+            alt={displayName}
+            className="h-full w-full object-cover pointer-events-none"
+            // URL avatar Discord chứa mã băm CỦA CHÍNH TẤM ẢNH, nên người ta đổi ảnh là URL
+            // cũ chết hẳn (404) và thẻ hiện ra ô đen kèm chữ alt. Máy chủ có làm tươi lại,
+            // nhưng trong lúc chưa kịp thì rơi về ảnh mặc định của Discord cho đỡ vỡ mặt.
+            // Gỡ onerror ngay sau khi đổi để ảnh mặc định lỡ hỏng nốt thì không lặp vô tận.
+            onError={(e) => {
+              const el = e.currentTarget;
+              el.onerror = null;
+              el.src = 'https://cdn.discordapp.com/embed/avatars/0.png';
+            }}
           />
         </RankFrame>
         

@@ -215,27 +215,60 @@ router.get('/custom-members/:groupID', async (req, res) => {
       // nhiên, mà `name` lúc đó lại đang là dãy số Discord ID nên nhìn càng vô nghĩa.
       // Ảnh Discord luôn ở cdn.discordapp.com; thứ gì khác coi như chưa có ảnh thật.
       const laAnhThat = (v: any) => typeof v === 'string' && /(^|\/\/)cdn\.discordapp\.com\//.test(v);
+      const client = await getDiscordClient(groupID);
+
+      const ghiLai = (m: any, anh: string, ten?: string) => {
+        if (!anh || anh === m.avatar) return;
+        m.avatar = anh;
+        if (ten) m.name = ten;
+        if (localData.members[m.id]) {
+          localData.members[m.id].avatar = anh;
+          if (ten) localData.members[m.id].name = ten;
+          localData.members[m.id].avatarLuc = Date.now();
+          coDoi = true;
+        }
+      };
+
+      // TẦNG 1: lấy từ bộ nhớ bot. Không tốn request nào.
+      // discord.js tự cập nhật bộ nhớ này khi Discord báo có người đổi ảnh hay đổi tên, nên
+      // phần lớn trường hợp chỉ cần đọc ra là đã tươi.
+      if (client) {
+        for (const m of groupMembers) {
+          if (!laSnowflake(m.discordId)) continue;
+          const u = client.users.cache.get(m.discordId);
+          if (!u) continue;
+          ghiLai(m, u.displayAvatarURL(), laSnowflake(m.name) ? normalizeDiscordName(u.globalName || u.username) : undefined);
+        }
+      }
+
+      // TẦNG 2: hỏi Discord cho những người bộ nhớ không có, hoặc ảnh đã quá cũ.
+      //
+      // ⚠️ ĐÂY LÀ CHỖ BẢN TRƯỚC SAI. Nó chỉ lấy avatar cho người CHƯA CÓ ảnh, có rồi thì
+      // không bao giờ đụng lại. Mà URL avatar Discord chứa MÃ BĂM CỦA CHÍNH TẤM ẢNH
+      // (cdn.discordapp.com/avatars/<id>/<hash>), nên người ta đổi ảnh là URL cũ chết 404
+      // và thẻ hiện ra ô đen. Ảnh "đã có" không đồng nghĩa với ảnh "còn đúng".
+      //
+      // Nên thêm mốc thời gian: quá 6 giờ thì hỏi lại. Vẫn giữ trần 8 người mỗi lượt để
+      // không bao giờ dội thành cụm lớn, ai chưa tới lượt thì lượt sau.
+      const HAN_LAM_TUOI = 6 * 60 * 60 * 1000;
       const canLay = groupMembers
-        .filter((m) => !laAnhThat(m.avatar) && laSnowflake(m.discordId))
+        .filter((m) => laSnowflake(m.discordId)
+          && (!laAnhThat(m.avatar) || Date.now() - (localData.members[m.id]?.avatarLuc || 0) > HAN_LAM_TUOI))
         .slice(0, TRAN_MOI_LUOT);
 
-      if (canLay.length) {
-        const client = await getDiscordClient(groupID);
-        if (client) {
-          for (const m of canLay) {
-            try {
-              const u = await client.users.fetch(m.discordId);
-              if (!u) continue;
-              m.avatar = u.displayAvatarURL();
-              if (laSnowflake(m.name)) m.name = normalizeDiscordName(u.globalName || u.username);
-              // Ghi vào DB để lần sau không phải hỏi Discord nữa.
-              if (localData.members[m.id]) {
-                localData.members[m.id].avatar = m.avatar;
-                if (m.name) localData.members[m.id].name = m.name;
-                coDoi = true;
-              }
-            } catch { /* người này không tra được thì bỏ, đừng dừng cả vòng */ }
-          }
+      if (canLay.length && client) {
+        for (const m of canLay) {
+          try {
+            const u = await client.users.fetch(m.discordId, { force: true });
+            if (!u) continue;
+            ghiLai(m, u.displayAvatarURL(), laSnowflake(m.name) ? normalizeDiscordName(u.globalName || u.username) : undefined);
+            // Đóng dấu thời gian kể cả khi ảnh không đổi, không thì lượt sau lại hỏi đúng
+            // người này và mấy người xếp sau không bao giờ tới lượt.
+            if (localData.members[m.id]) {
+              localData.members[m.id].avatarLuc = Date.now();
+              coDoi = true;
+            }
+          } catch { /* người này không tra được thì bỏ, đừng dừng cả vòng */ }
         }
       }
     } catch (e: any) {
