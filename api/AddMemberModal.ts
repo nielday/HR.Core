@@ -14,6 +14,30 @@ const router = express.Router();
  * Phía đọc đã sửa để chấp cả hai, nhưng vẫn phải chuẩn hoá lúc ghi, không thì bản ghi lệch
  * cứ đẻ tiếp và lần sau lại có người mất công dò.
  */
+const laSnowflake = (v: any) => typeof v === 'string' && /^\d{17,19}$/.test(v.trim());
+
+/**
+ * Khoá bản ghi BẮT BUỘC là Discord ID.
+ *
+ * Bản cũ nhận bất cứ thứ gì trình duyệt gửi lên làm khoá, nên khi tra Discord không ra thì
+ * frontend lấy 'custom_<mốc thời gian>'. Mốc thời gian duy nhất theo GIÂY PHÚT BẤM chứ
+ * không duy nhất theo NGƯỜI: thêm cùng một người hai lần là hai bản ghi, và Discord không
+ * biết dãy số đó là gì.
+ * Cả loạt lỗi đã sửa đều mọc ra từ đây. Đã dọn sạch dữ liệu cũ rồi thì phải bịt luôn chỗ đẻ.
+ *
+ * Chặn ở MÁY CHỦ chứ không chỉ ở giao diện: frontend sửa được, máy chủ thì không.
+ */
+function kiemKhoa(m: any): string {
+  if (!m || typeof m !== 'object') return 'Dữ liệu thành viên không hợp lệ.';
+  const id = String(m.discordId || m.id || '').trim();
+  if (!laSnowflake(id)) {
+    return 'Thiếu Discord ID. Mỗi thành viên phải gắn với một tài khoản Discord thật, '
+      + 'không thì hệ thống không nhận ra đây là ai: mất ảnh đại diện, không bấm được vào tên, '
+      + 'không điểm danh voice được, và thêm hai lần sẽ thành hai người.';
+  }
+  return '';
+}
+
 function chuanHoaVuKhi(m: any) {
   if (!m || typeof m !== 'object') return m;
   const phu = (m.secondaryWeaponIds?.length ? m.secondaryWeaponIds : (m.secondaryWeapons || []).map((w: any) => w?.id));
@@ -110,7 +134,13 @@ router.get('/discord-user/:groupID', async (req, res) => {
 router.post('/custom-members/:groupID', async (req, res) => {
   try {
     const { groupID } = req.params;
+    const loi = kiemKhoa(req.body);
+    if (loi) return res.status(400).json({ error: loi });
+
     const newMember = chuanHoaVuKhi(req.body);
+    // Khoá LUÔN là Discord ID, kể cả khi trình duyệt gửi lên một khoá khác.
+    newMember.id = String(newMember.discordId || newMember.id).trim();
+    newMember.discordId = newMember.id;
 
     const localData = loadDb();
     if (!localData.members[newMember.id]) {
@@ -146,8 +176,15 @@ router.post('/custom-members/:groupID/batch', async (req, res) => {
     const localData = loadDb();
     const newMemberIds: string[] = [];
     
+    const loiDs = newMembers.map((m, i) => ({ i, loi: kiemKhoa(m) })).filter((x) => x.loi);
+    if (loiDs.length) {
+      return res.status(400).json({ error: `${loiDs.length} thành viên thiếu Discord ID. ${loiDs[0].loi}` });
+    }
+
     newMembers.forEach(raw => {
       const member = chuanHoaVuKhi(raw);
+      member.id = String(member.discordId || member.id).trim();
+      member.discordId = member.id;
       if (!localData.members[member.id]) {
         localData.members[member.id] = { id: member.id, name: '' };
       }

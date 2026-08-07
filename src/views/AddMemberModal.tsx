@@ -184,11 +184,32 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
       return;
     }
 
-    const finalId = memberData.id || 'custom_' + Date.now();
+    // ⚠️ KHOÁ VÒI NƯỚC.
+    // Bản cũ: tra Discord không ra thì lấy 'custom_' + mốc thời gian làm khoá. Mốc thời gian
+    // duy nhất theo GIÂY PHÚT BẤM chứ không duy nhất theo NGƯỜI, nên thêm cùng một người hai
+    // lần là ra hai bản ghi, và Discord không biết dãy số đó là gì.
+    // Đó là gốc của cả loạt lỗi đã sửa: avatar không lên, mention không gắn được, vũ khí
+    // trống, người nhân đôi, nguồn bình chọn lọc mất người nhà.
+    // Đã dọn sạch dữ liệu cũ, nên chặn luôn chỗ đẻ ra nó, không thì mai lại bẩn y như cũ.
+    // Cho phép DÁN THẲNG Discord ID vào ô tên, không cần bot online. Không có đường này thì
+    // bot rớt mạng là không thêm được ai, mà đó là lúc người ta hay phải thêm gấp nhất.
+    const goNhap = name.trim();
+    const finalId = memberData.discordId || memberData.id || (/^\d{17,19}$/.test(goNhap) ? goNhap : '');
+    if (!finalId || !/^\d{17,19}$/.test(String(finalId).trim())) {
+      setError('Chưa tra được tài khoản Discord của người này nên không lưu được.\n\n'
+        + 'Gõ đúng tên Discord rồi bấm nút tìm, hoặc dán thẳng Discord ID (dãy 18 chữ số: '
+        + 'bật Chế độ nhà phát triển trong Discord, chuột phải vào người đó, Sao chép ID).\n\n'
+        + 'Lý do: thiếu Discord ID thì hệ thống không nhận ra đây là ai, dẫn tới mất ảnh đại '
+        + 'diện, không bấm được vào tên, không điểm danh voice được, và thêm hai lần sẽ thành '
+        + 'hai người.');
+      return;
+    }
+
     const finalAvatar = memberData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=random`;
 
     const newMember: Member = {
-      id: finalId,
+      id: String(finalId).trim(),
+      discordId: String(finalId).trim(),
       name: normalizeDiscordName(finalName),
       avatar: finalAvatar,
       status: 'offline',
@@ -214,10 +235,10 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
       await onAdd(newMember);
       showToast(t('setup.saveSuccess'), 'success');
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError(t('setup.saveError'));
-      showToast(t('setup.saveError'), 'error');
+      // Nguyên văn từ máy chủ: thiếu Discord ID, trùng người, ... Mỗi cái một cách sửa khác.
+      setError(err?.message || t('setup.saveError'));
     } finally {
       setIsSaving(false);
     }
@@ -528,8 +549,10 @@ export const AddMemberModal: React.FC<AddMemberModalProps> = ({ isOpen, onClose,
         </div>
 
         <div className="px-6 py-4 flex items-center justify-between border-t border-[#3F4147] bg-[#2B2D31] shadow-2xl">
-          <div className="text-red-400 text-sm font-medium">
-            {error && <span>{error}</span>}
+          {/* whitespace-pre-line: câu lỗi thiếu Discord ID dài và có xuống dòng, gồm việc
+              cần làm rồi mới tới lý do. Dồn thành một khối chữ liền là không ai đọc. */}
+          <div className="text-red-400 text-xs font-medium whitespace-pre-line max-w-[60%] leading-snug">
+            {error}
           </div>
           <div className="flex justify-end gap-3">
             <button 

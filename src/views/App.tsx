@@ -1015,11 +1015,16 @@ export default function App() {
               teamManager.refreshMembers();
               showToast(t('toasts.addMemberSuccess'), 'success');
             } else {
-              showToast(t('toasts.saveMemberError'), 'error');
+              // NÉM nguyên câu của máy chủ để ô lỗi trong hộp thoại hiện ra. Máy chủ giờ từ
+              // chối bản ghi thiếu Discord ID và nói rõ vì sao, thay bằng câu chung chung
+              // "lỗi khi lưu" là người dùng không biết phải làm gì.
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || t('toasts.saveMemberError'));
             }
-          } catch (e) {
+          } catch (e: any) {
             console.error(e);
-            showToast(t('toasts.saveMemberError'), 'error');
+            showToast(e?.message || t('toasts.saveMemberError'), 'error');
+            throw e;   // để hộp thoại giữ nguyên và hiện lỗi, đừng đóng lại như đã lưu xong
           }
         }}
       />
