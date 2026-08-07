@@ -178,9 +178,8 @@ export function batBuocDangNhap(req: Request, res: Response, next: NextFunction)
   // KIỂM NHÓM. Trước đây :groupID lấy thẳng từ đường dẫn rồi tin luôn, nên đổi số trên thanh
   // địa chỉ là đọc và sửa được dữ liệu nhóm khác. Giờ nhóm trong đường dẫn phải khớp nhóm
   // ghi trong phiên, mà phiên thì có chữ ký nên trình duyệt không sửa được.
-  const nhomTrenDuong = (req.params as any)?.groupID || (req.params as any)?.groupId
-    || req.path.split('/')[2];
-  if (nhomTrenDuong && /^[\w-]+$/.test(nhomTrenDuong) && duongCoNhom(req.path) && nhomTrenDuong !== phien.groupID) {
+  const nhom = nhomTrenDuong(req.path);
+  if (nhom && nhom !== phien.groupID) {
     return res.status(403).json({ error: 'Bạn không có quyền với nhóm này.' });
   }
 
@@ -188,15 +187,29 @@ export function batBuocDangNhap(req: Request, res: Response, next: NextFunction)
 }
 
 /**
- * Đoạn thứ hai của đường dẫn có phải id nhóm không.
- * Không phải đường nào cũng mang id nhóm ở đó (ví dụ /discord-profile/<discordId>), so bừa
- * là chặn nhầm chính người dùng hợp lệ.
+ * Id nhóm nằm ở đoạn nào của đường dẫn.
+ *
+ * Phải khai TỪNG DẠNG chứ không đếm đoạn cho nhanh. Bản đầu tôi lấy cứng đoạn thứ hai, thế
+ * là /poll/results/1 bị đọc thành nhóm "results", không khớp nhóm nào nên chặn luôn chính
+ * người dùng hợp lệ: bảng kết quả bình chọn trả 403 và danh sách người đăng ký trống trơn.
+ *
+ * Không có dạng nào khớp thì trả rỗng, tức là đường này không mang id nhóm (ví dụ
+ * /discord-profile/<discordId>) và không có gì để so.
  */
-function duongCoNhom(duong: string): boolean {
-  const goc = duong.split('/')[1];
-  return ['setups', 'members-config', 'custom-members', 'members', 'voice-channels', 'voice-state',
-    'bot-config', 'status', 'connect', 'disconnect', 'poll', 'discord', 'member-profiles',
-    'discord-user', 'tactics'].includes(goc);
+const DANG_CO_NHOM: RegExp[] = [
+  // Nhóm nằm ở đoạn THỨ BA.
+  /^\/poll\/results\/([^/]+)/,
+  // Nhóm nằm ở đoạn thứ hai.
+  /^\/(?:setups|members-config|custom-members|members|voice-channels|voice-state|bot-config|status|connect|disconnect|poll|discord|member-profiles|discord-user|tactics)\/([^/]+)/,
+];
+
+function nhomTrenDuong(duong: string): string {
+  const p = duong.split('?')[0];
+  for (const dang of DANG_CO_NHOM) {
+    const m = p.match(dang);
+    if (m?.[1] && /^[\w-]+$/.test(m[1])) return m[1];
+  }
+  return '';
 }
 
 /** Việc chỉ quản trị được làm: cấu hình bot (đọc ra là thấy TOKEN BOT), bật tắt kết nối. */

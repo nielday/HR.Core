@@ -993,7 +993,16 @@ export function useTeamManager(isConnected: boolean, groupID: string, username: 
         fetchPromises.push(fetch(url.toString()).then(async res => {
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            throw new Error(`Lỗi lấy thành viên (${res.status}): ${errData.error || res.statusText}`);
+            const loi = `Lỗi lấy thành viên (${res.status}): ${errData.error || res.statusText}`;
+            // Nguồn PHIẾU BẦU và GvG lấy người từ chính bảng bình chọn, kênh voice ở đây chỉ
+            // là phần bù để có sẵn ảnh và tên. Kênh voice hỏng mà kéo chết cả lượt thì danh
+            // sách người đăng ký trắng trơn, trong khi bảng bình chọn vẫn còn nguyên.
+            // Ghi cảnh báo rồi đi tiếp, đừng ném.
+            if (source === 'poll' || source === 'gvg') {
+              console.warn('[refreshMembers] Bỏ qua kênh voice:', loi);
+              return { members: [], canhBao: `${loi} Vẫn lấy được người từ bảng bình chọn.` };
+            }
+            throw new Error(loi);
           }
           return res.json();
         }));
