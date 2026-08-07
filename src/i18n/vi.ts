@@ -154,6 +154,7 @@ export const vi = {
       voice: {
         title: 'Kênh voice lấy người',
         reload: 'Hỏi lại Discord danh sách kênh và số người',
+        pruned: 'Đã bỏ {{n}} kênh voice không còn tồn tại hoặc bot không xem được nữa.',
         collapse: 'Thu gọn danh sách kênh',
         expand: 'Mở danh sách kênh để chọn',
         none: 'Server chưa có kênh voice nào bot nhìn thấy',

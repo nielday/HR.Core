@@ -153,6 +153,7 @@ export const en = {
       voice: {
         title: 'Voice channels to pull from',
         reload: 'Ask Discord again for channels and headcount',
+        pruned: 'Removed {{n}} voice channels that no longer exist or the bot can no longer see.',
         collapse: 'Collapse the channel list',
         expand: 'Open the channel list to pick channels',
         none: 'No voice channel visible to the bot',

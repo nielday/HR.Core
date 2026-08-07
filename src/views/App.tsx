@@ -412,12 +412,35 @@ export default function App() {
     try {
       const res = await fetch(`/api/voice-channels/${userGroup}`);
       const kq = await res.json();
-      setVoiceChannels(kq.channels || []);
+      const ds = kq.channels || [];
+      setVoiceChannels(ds);
       setVoiceLoi(kq.error || '');
     } catch {
       setVoiceLoi(t('sidebar.voice.loadError'));
     }
   };
+
+  // DỌN KÊNH ĐÃ TICK MÀ KHÔNG CÒN.
+  // Lựa chọn tick nằm trong DB và sống mãi, nên kênh bị xoá hay bot mất quyền xem thì cái
+  // tick vẫn ở đó, và mọi lượt nạp danh sách sau này đều báo lỗi "không mở được kênh ID ...".
+  // Người dùng nhìn vào không hiểu id đó ở đâu ra, vì nó không hề nằm trong Cấu hình Discord.
+  //
+  // Để riêng một effect chứ không dọn ngay trong lúc nạp: danh sách kênh và lựa chọn đã tick
+  // về từ hai lời gọi khác nhau, cái nào tới trước không biết, dọn trong lúc nạp là dễ dọn
+  // lúc lựa chọn còn chưa kịp nạp.
+  //
+  // CHỈ dọn khi hỏi được danh sách VÀ danh sách không rỗng. Bot rớt mạng là danh sách rỗng,
+  // dọn lúc đó là xoá trắng lựa chọn của người ta.
+  useEffect(() => {
+    if (voiceLoi || !voiceChannels.length || !voiceChon.length) return;
+    const con = new Set(voiceChannels.map((c) => c.id));
+    const chonMoi = voiceChon.filter((id) => con.has(id));
+    if (chonMoi.length === voiceChon.length) return;
+    const ganMoi: Record<string, string> = {};
+    for (const id of Object.keys(voiceGan)) if (con.has(id)) ganMoi[id] = voiceGan[id];
+    showToast(t('sidebar.voice.pruned', { n: voiceChon.length - chonMoi.length }), 'info');
+    luuNguonVoice(chonMoi, ganMoi);
+  }, [voiceChannels, voiceChon, voiceLoi]);
 
   // Bot lên rồi mới hỏi được danh sách kênh. Số người trong kênh đổi liên tục nên nạp lại
   // mỗi lần bot đổi trạng thái, còn lại để người dùng chủ động bấm làm mới.
