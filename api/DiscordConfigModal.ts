@@ -208,7 +208,7 @@ router.post('/connect/:groupID', batBuocQuanTri, async (req, res) => {
           // đăng nhập, mà trước đây lại bắt buộc phải có kênh mới cho kết nối. Vòng luẩn
           // quẩn: muốn chọn kênh phải kết nối, muốn kết nối phải chọn kênh.
           if (!data.channelId) {
-            resolve({ success: true, canhBao: 'Đã kết nối bot, nhưng CHƯA chọn kênh voice. Chọn kênh ở ô bên cạnh rồi lưu lại.' });
+            resolve({ success: true, canhBao: 'Đã kết nối bot, nhưng CHƯA chọn kênh đăng đội hình. Chọn kênh ở ô bên cạnh rồi lưu lại.' });
             return;
           }
 
@@ -217,18 +217,19 @@ router.post('/connect/:groupID', batBuocQuanTri, async (req, res) => {
             return null;
           });
 
-          // Kênh KHÔNG phải voice thì chỉ CẢNH BÁO, đừng chặn kết nối.
-          // Voice chỉ cần cho đúng một thứ: nguồn "Online (Discord)" lấy danh sách từ người
-          // đang ngồi trong kênh. Còn kết nối bot, đăng poll, đăng đội hình, nguồn "Thành
-          // viên" thì không liên quan gì tới voice. Chặn ở đây là khoá luôn người chỉ muốn
-          // dùng mấy tính năng kia.
+          // Ô này nay là kênh ĐĂNG ĐỘI HÌNH nên yêu cầu đã đảo ngược: cần kênh nhận được tin
+          // nhắn, chứ không cần voice.
+          // Bản cũ cảnh báo "không phải kênh voice", nay là lời khuyên sai: chọn kênh voice
+          // thì đội hình đăng vào khung chat của phòng voice, chẳng ai đọc.
+          // Vẫn chỉ CẢNH BÁO chứ không chặn kết nối, vì kết nối bot còn dùng cho poll và cho
+          // nguồn voice ở cột trái, không phụ thuộc ô này.
           if (!channel) {
             resolve({ success: false, error: `Không tìm thấy kênh (ID: ${data.channelId}), hoặc bot không có quyền xem kênh đó.` });
-          } else if (typeof (channel as any).isVoiceBased !== 'function' || !(channel as any).isVoiceBased()) {
+          } else if (typeof (channel as any).isTextBased !== 'function' || !(channel as any).isTextBased()) {
             resolve({
               success: true,
-              canhBao: 'Đã kết nối. Kênh mặc định đang chọn KHÔNG phải kênh voice, nên nguồn "Online (Discord)" sẽ trống. '
-                + 'Muốn dùng nguồn đó thì chọn một kênh voice; còn poll, đội hình và nguồn "Thành viên" vẫn chạy bình thường.',
+              canhBao: 'Đã kết nối. Kênh đăng đội hình đang chọn không nhận được tin nhắn, nên nút "Đăng đội hình" sẽ lỗi. '
+                + 'Chọn một kênh chữ; các phần khác vẫn chạy bình thường.',
             });
           } else {
             resolve({ success: true });

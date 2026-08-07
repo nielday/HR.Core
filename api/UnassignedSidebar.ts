@@ -123,15 +123,20 @@ router.get('/members/:groupID', async (req, res) => {
 
     const data = botConfig.data;
     guildId = data.guildId;
-    // Không truyền kênh nào thì lấy theo cấu hình đã lưu: trước hết là danh sách nguồn voice
-    // đã tick, sau mới tới kênh mặc định cũ.
-    const dsKenh = dsKenhVao.length
-      ? dsKenhVao
-      : (data.voiceNguon?.chon?.length ? data.voiceNguon.chon : (data.channelId ? [data.channelId] : []));
+    // Không truyền kênh nào thì lấy danh sách kênh voice ĐÃ TICK trong cấu hình.
+    // KHÔNG rơi về data.channelId nữa: ô đó nay là kênh ĐĂNG ĐỘI HÌNH, gần như luôn là kênh
+    // chữ. Rơi về nó là chắc chắn ra lỗi "kênh chữ, không phải kênh voice" trong khi người
+    // dùng chẳng làm gì sai, mà lỗi lại chỉ vào một ô chẳng liên quan.
+    const dsKenh = dsKenhVao.length ? dsKenhVao : (data.voiceNguon?.chon || []);
 
-    if (!guildId || !dsKenh.length) {
-      console.error(`[Members API] Missing config for group ${groupID}: guildId=${guildId}, so kenh=${dsKenh.length}`);
-      return res.status(400).json({ error: 'Thiếu cấu hình Guild ID hoặc chưa chọn kênh voice nào.' });
+    if (!guildId) {
+      console.error(`[Members API] Missing guildId for group ${groupID}`);
+      return res.status(400).json({ error: 'Thiếu Guild ID trong cấu hình Discord.' });
+    }
+    if (!dsKenh.length) {
+      return res.status(400).json({
+        error: 'Chưa chọn kênh voice nào. Mở khung "Kênh voice lấy người" ở cột trái rồi tick kênh cần lấy người.',
+      });
     }
 
     const guild = await client.guilds.fetch(guildId).catch(err => {

@@ -130,18 +130,23 @@ export const DiscordConfigModal: React.FC<DiscordConfigModalProps> = ({ onClose,
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-[#949BA4]">Kênh mặc định (Default Channel)</label>
+              {/* Ô này TỪNG là "kênh mặc định" kiêm luôn nguồn danh sách thành viên, nên bắt
+                  phải là kênh voice. Nguồn danh sách nay lấy từ khung tick kênh voice ở cột
+                  trái, việc duy nhất còn lại của ô này là chỗ ĐĂNG ĐỘI HÌNH. Giữ tên cũ và
+                  dòng "phải là kênh VOICE" chỉ tổ bắt người ta chọn kênh voice, rồi đội hình
+                  đăng vào khung chat của phòng voice mà không ai đọc. */}
+              <label className="text-[10px] font-bold uppercase tracking-wider text-[#949BA4]">Kênh đăng đội hình</label>
               <select
                 value={config.channelId}
                 onChange={e => setConfig({ ...config, channelId: e.target.value })}
                 className="w-full rounded bg-[#1E1F22] border border-[#3F4147] p-2.5 text-sm text-[#DBDEE1] focus:outline-none focus:ring-1 focus:ring-[#5865F2]"
               >
-                <option value="">-- Chọn kênh mặc định --</option>
+                <option value="">-- Chọn kênh đăng đội hình --</option>
                 {(config.channels || []).map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
                 ))}
               </select>
-              <p className="text-[10px] text-[#949BA4]">Phải là kênh <b>VOICE</b>. Danh sách thành viên lấy từ những người đang ngồi trong kênh này.</p>
+              <p className="text-[10px] text-[#949BA4]">Nên là kênh <b>CHỮ</b>. Nút "Đăng đội hình" gửi bài vào đây. Nguồn danh sách thành viên KHÔNG lấy từ ô này, mà từ khung "Kênh voice lấy người" ở cột trái.</p>
             </div>
 
             {/* Poll phải đăng vào kênh CHỮ. Trước đây dùng chung `channelId` với kênh voice
