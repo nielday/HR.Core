@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Member, VoiceChannel } from '../models';
 import { DropZone, MemberCard, MemberStatsOverviewModal } from './';
 
+/** Cắt nhãn cho vừa cột. Thẻ select tự bung rộng theo lựa chọn dài nhất, không chặn được. */
+const catNhan = (s: string, n = 34) => ((s || '').length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+
 const SkeletonMemberCard = () => (
   <div className="flex items-center gap-2 rounded-lg border border-[#3F4147] bg-[#2B2D31]/40 p-[1px] animate-pulse h-[58px]">
     <div className="h-[56px] w-[56px] shrink-0 rounded-full bg-[#3F4147] ml-[1px]" />
@@ -212,8 +215,14 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                             {gvgPollOptions.length > 0 && (
                               <>
                                 <option disabled key="sep-gvg">──────────</option>
+                                {/* CẮT NGẮN nhãn. Tên lựa chọn poll do người dùng đặt, dài
+                                    tuỳ hứng ("Thứ 4 - tập trung 20h30 scrim lúc 21h30 vs
+                                    WhereDogMeat"). Phần bung ra của thẻ select do TRÌNH DUYỆT
+                                    vẽ theo lựa chọn dài nhất, CSS không ép được, nên nó tràn
+                                    ra ngoài cột và đè lên khu vực xếp đội.
+                                    Tên đầy đủ vẫn còn ở dòng "Đang hiển thị" ngay bên dưới. */}
                                 {gvgPollOptions.map((opt, idx) => (
-                                  <option key={`gvg-${idx}`} value={`gvg-${idx}`}>{opt}</option>
+                                  <option key={`gvg-${idx}`} value={`gvg-${idx}`} title={opt}>{catNhan(opt)}</option>
                                 ))}
                               </>
                             )}
@@ -243,10 +252,13 @@ export const UnassignedSidebar: React.FC<UnassignedSidebarProps> = ({
                             </motion.button>
                           )}
                         </div>
+                        {/* Dòng này giữ TÊN ĐẦY ĐỦ của lựa chọn đang xem, vì nhãn trong ô
+                            chọn đã bị cắt. Cho xuống dòng thoải mái: thà cao thêm một dòng
+                            còn hơn cắt mất tên trận. */}
                         {memberSource && (
-                          <div className="text-[10px] text-[#949BA4] flex items-center gap-1.5">
-                            <div className={`h-1.5 w-1.5 rounded-full ${memberSource === 'discord' ? 'bg-green-500' : memberSource === 'custom' ? 'bg-blue-500' : 'bg-purple-500'}`} />
-                            <span>{t('sidebar.showing')}: {
+                          <div className="text-[10px] text-[#949BA4] flex items-start gap-1.5 min-w-0">
+                            <div className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${memberSource === 'discord' ? 'bg-green-500' : memberSource === 'custom' ? 'bg-blue-500' : 'bg-purple-500'}`} />
+                            <span className="min-w-0 break-words leading-snug">{t('sidebar.showing')}: {
                               memberSource === 'discord' ? t('sidebar.sources.discord') :
                               memberSource === 'custom' ? t('sidebar.sources.members') :
                               memberSource === 'poll' ? t('sidebar.sources.votes') :
