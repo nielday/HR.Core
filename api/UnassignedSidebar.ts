@@ -1,8 +1,47 @@
 import express from "express";
+// Nạp ở đầu file, KHÔNG dùng require() trong thân hàm: file này là ESM, require không tồn
+// tại ở đó và sẽ nổ đúng lúc gọi endpoint chứ không phải lúc biên dịch.
+import v8 from 'v8';
 import { normalizeDiscordName, getDiscordClient, membersCache, CACHE_TTL, botConfigCache, BOT_CONFIG_CACHE_TTL, discordClients } from './common';
 import { loadDb } from './localDb';
 
 const router = express.Router();
+
+// =====================================================================
+// SỐ LIỆU BỘ NHỚ THẬT.
+//
+// Đặt trần heap mà không biết heap đang dùng bao nhiêu là đoán mò: đặt cao thì vô dụng, đặt
+// thấp thì container chết vì hết bộ nhớ. Biểu đồ của Railway chỉ cho RSS, tức tổng cả phần
+// native lẫn mã máy, không tách được phần JS.
+// Đường này trả về đúng mấy con số cần để chọn trần, và số lượng từng kho cache của
+// discord.js để biết chỗ nào đang phình.
+// =====================================================================
+router.get('/suc-khoe/:groupID', async (req, res) => {
+  const m = process.memoryUsage();
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+
+  const kho: any[] = [];
+  for (const [gid, c] of discordClients.entries()) {
+    if (!c) continue;
+    kho.push({
+      nhom: gid,
+      users: c.users?.cache?.size ?? 0,
+      guilds: c.guilds?.cache?.size ?? 0,
+      members: [...(c.guilds?.cache?.values() || [])].reduce((n: number, g: any) => n + (g.members?.cache?.size || 0), 0),
+      channels: c.channels?.cache?.size ?? 0,
+    });
+  }
+
+  res.json({
+    rssMB: mb(m.rss),
+    heapDungMB: mb(m.heapUsed),
+    heapCapPhatMB: mb(m.heapTotal),
+    ngoaiHeapMB: mb(m.external),
+    tranHeapMB: Math.round(v8.getHeapStatistics().heap_size_limit / 1024 / 1024),
+    chayDuocGiay: Math.round(process.uptime()),
+    khoDiscord: kho,
+  });
+});
 
 // =====================================================================
 // LIỆT KÊ KÊNH VOICE CỦA SERVER.

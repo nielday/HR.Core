@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, GuildMember } from 'discord.js';
+import { Client, GatewayIntentBits, GuildMember, Options, type ClientOptions } from 'discord.js';
 import crypto from 'crypto';
 import fsSync from 'fs';
 import path from 'path';
@@ -69,6 +69,41 @@ export async function getDiscordClient(groupID: string): Promise<Client | null> 
   return null;
 }
 
+/**
+ * Tuỳ chọn dựng client Discord, DÙNG CHUNG cho mọi chỗ tạo client.
+ *
+ * Trước đây mỗi chỗ tự `new Client({ intents })` trần, không có sweepers, nên bộ nhớ chỉ có
+ * lên chứ không có xuống.
+ *
+ * ⚠️ QUÉT `users`, KHÔNG QUÉT `guildMembers`. Hai kho này khác hẳn nhau:
+ *   - `guild.members` CÓ TRẦN TỰ NHIÊN: discord.js xoá khi có GUILD_MEMBER_REMOVE, nên nó
+ *     bão hoà ở sĩ số server rồi đứng. Server đông thì mức bão hoà cao, nhưng vẫn là trần.
+ *     Và tool cần kho này cho điểm danh voice, quét đi là gãy tính năng.
+ *   - `client.users` là kho toàn cục, gom MỌI user từng thấy và KHÔNG tự dọn. Đây mới là
+ *     thứ leo không giới hạn.
+ *
+ * Bộ lọc GIỮ LẠI ai còn là thành viên trong bộ nhớ của một server nào đó. Quét sạch không
+ * chừa thì `member.user` của họ thành rỗng, và code đọc `m.user.bot` sẽ nổ.
+ */
+export function tuyChonClient(): ClientOptions {
+  return {
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.GuildMembers,
+    ],
+    sweepers: {
+      ...Options.DefaultSweeperSettings,
+      users: {
+        interval: 3600,           // mỗi giờ một lần, không cần gấp
+        filter: () => (user: any) =>
+          user.id !== user.client.user?.id
+          && !user.client.guilds.cache.some((g: any) => g.members.cache.has(user.id)),
+      },
+    },
+  };
+}
+
 export const CACHE_TTL = 15000;
 export const membersCache: Record<string, { data: any, timestamp: number }> = {};
 export const pollResultsCache: Record<string, { data: any, timestamp: number }> = {};
@@ -96,13 +131,7 @@ export async function autoConnectBots() {
 
           if (!token) continue;
 
-          const newClient = new Client({
-            intents: [
-              GatewayIntentBits.Guilds,
-              GatewayIntentBits.GuildVoiceStates,
-              GatewayIntentBits.GuildMembers,
-            ]
-          });
+          const newClient = new Client(tuyChonClient());
 
           newClient.on('error', (err) => {
             console.error(`Discord Client Error (Group ${groupID}):`, err);

@@ -1,6 +1,6 @@
 import express from "express";
 import { Client, GatewayIntentBits } from 'discord.js';
-import { decrypt, encrypt, discordClients, invalidateBotConfigCache, getDiscordClient, setupInteractionHandler } from './common';
+import { decrypt, encrypt, discordClients, invalidateBotConfigCache, getDiscordClient, setupInteractionHandler, tuyChonClient } from './common';
 import { loadDb, saveDb } from './localDb';
 import { batBuocQuanTri } from './auth';
 
@@ -166,13 +166,8 @@ router.post('/connect/:groupID', batBuocQuanTri, async (req, res) => {
       return res.status(400).json({ error: 'Token không hợp lệ hoặc trống.' });
     }
 
-    const newClient = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildMembers,
-      ]
-    });
+    // Dùng chung tuỳ chọn với lúc tự kết nối, để sweepers không bị bỏ sót ở một đường.
+    const newClient = new Client(tuyChonClient());
 
     newClient.on('error', (err) => {
       console.error(`Discord Client Error (Group ${groupID}):`, err);
