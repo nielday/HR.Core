@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { Storage } from '@google-cloud/storage';
+// NẠP MUỘN SDK Google Cloud.
+// `import type` bị xoá hẳn lúc biên dịch, không kéo thư viện vào bộ nhớ. Bản cũ import
+// thẳng nên SDK nằm thường trú ~30 MB ngay cả khi GCS_DISABLED=1, tức là tốn ngần ấy RAM
+// cho một thứ không bao giờ được gọi. Giờ chỉ nạp đúng lúc thật sự cần đồng bộ.
+import type { Storage } from '@google-cloud/storage';
 
 const bucketName = process.env.GCS_BUCKET_NAME || 'vnhk-db';
 const DB_DIR = path.join(process.cwd(), 'db');
@@ -50,9 +54,10 @@ function ghiHut() {
 /** Có đang đồng bộ được không. Dùng cho endpoint kiểm tra sức khoẻ. */
 export const dongBoDangChay = () => gcsSyncEnabled;
 
-function getStorage() {
+async function getStorage(): Promise<Storage> {
   if (!storageInstance) {
-    storageInstance = new Storage();
+    const { Storage: LopStorage } = await import('@google-cloud/storage');
+    storageInstance = new LopStorage();
   }
   return storageInstance;
 }
@@ -64,7 +69,7 @@ export async function downloadDbFromGCS(): Promise<void> {
   if (!gcsSyncEnabled) return;
   console.log(`[GCS Sync] Starting startup download check from bucket: ${bucketName}`);
   try {
-    const storage = getStorage();
+    const storage = await getStorage();
     const bucket = storage.bucket(bucketName);
 
     const [exists] = await bucket.exists();
@@ -153,7 +158,7 @@ async function runSyncInBackground() {
   console.log(`[GCS Sync] Running background sync: ${uploads.length} uploads, ${deletions.length} deletions.`);
 
   try {
-    const storage = getStorage();
+    const storage = await getStorage();
     const bucket = storage.bucket(bucketName);
 
     const [exists] = await bucket.exists();

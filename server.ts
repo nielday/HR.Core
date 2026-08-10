@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { app as apiApp } from "./api.ts";
 import { downloadDbFromGCS } from "./api/gcsSync.ts";
@@ -24,7 +23,12 @@ async function startServer() {
   app.use(apiApp);
 
   // Vite middleware for development
+  //
+  // NẠP MUỘN. Bản cũ import vite ở đầu file nên nó vào bộ nhớ MỌI LÚC, kể cả production
+  // là nơi nhánh này không bao giờ chạy: ~15 MB nằm không. Chuyển vào trong nhánh dev là
+  // production không đụng tới nó một lần nào.
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
