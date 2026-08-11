@@ -59,6 +59,55 @@ function docCgroup() {
   }
 }
 
+/**
+ * Dung lượng từng thư mục trong ổ đĩa, và mấy file to nhất.
+ *
+ * Page cache đo được 102 MB trong khi ổ đĩa 94 MB, tức gần như cả ổ đĩa đang nằm trong RAM
+ * và tính vào hoá đơn. 48 thành viên không thể chiếm ngần ấy, nên phải tìm xem cái gì to.
+ * Nghi bảng chiến thuật vì nó lưu nguyên hình vẽ dạng chuỗi, có thể nhúng ảnh.
+ *
+ * Chỉ đọc kích thước, KHÔNG đọc nội dung: vừa nhanh, vừa không kéo thêm file vào page cache
+ * (đọc nội dung để đo thì chính việc đo lại làm phình cái đang muốn đo).
+ */
+function doDia(goc: string, sau = 0): any {
+  try {
+    const ds = fs.readdirSync(goc, { withFileTypes: true });
+    let tong = 0;
+    let soFile = 0;
+    const con: any[] = [];
+    const to: { ten: string; kb: number }[] = [];
+
+    for (const e of ds) {
+      const p = `${goc}/${e.name}`;
+      if (e.isDirectory()) {
+        const c = doDia(p, sau + 1);
+        tong += c.byte;
+        soFile += c.soFile;
+        if (sau < 1) con.push({ ten: e.name, MB: Math.round(c.byte / 1024 / 1024 * 10) / 10, soFile: c.soFile });
+      } else {
+        const st = fs.statSync(p);
+        tong += st.size;
+        soFile++;
+        if (st.size > 512 * 1024) to.push({ ten: p.replace(goc, ''), kb: Math.round(st.size / 1024) });
+      }
+    }
+    if (sau > 0) return { byte: tong, soFile };
+    return {
+      byte: tong,
+      soFile,
+      tongMB: Math.round(tong / 1024 / 1024 * 10) / 10,
+      thuMuc: con.sort((a, b) => b.MB - a.MB),
+      fileTo: to.sort((a, b) => b.kb - a.kb).slice(0, 10),
+    };
+  } catch (e: any) {
+    return { loi: e?.message, byte: 0, soFile: 0 };
+  }
+}
+
+router.get('/dung-luong/:groupID', async (req, res) => {
+  res.json(doDia(`${process.cwd()}/db`));
+});
+
 router.get('/suc-khoe/:groupID', async (req, res) => {
   const m = process.memoryUsage();
   const mb = (n: number) => Math.round(n / 1024 / 1024);
