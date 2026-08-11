@@ -2,6 +2,7 @@ import express from "express";
 // Nạp ở đầu file, KHÔNG dùng require() trong thân hàm: file này là ESM, require không tồn
 // tại ở đó và sẽ nổ đúng lúc gọi endpoint chứ không phải lúc biên dịch.
 import v8 from 'v8';
+import fs from 'fs';
 import { normalizeDiscordName, getDiscordClient, membersCache, CACHE_TTL, botConfigCache, BOT_CONFIG_CACHE_TTL, discordClients } from './common';
 import { loadDb } from './localDb';
 
@@ -16,6 +17,48 @@ const router = express.Router();
 // Đường này trả về đúng mấy con số cần để chọn trần, và số lượng từng kho cache của
 // discord.js để biết chỗ nào đang phình.
 // =====================================================================
+/**
+ * Số liệu bộ nhớ của CẢ CONTAINER, đọc từ cgroup của Linux.
+ *
+ * `process.memoryUsage()` chỉ thấy chính tiến trình Node. Railway tính tiền theo container,
+ * trong đó còn có tiến trình `npm` và `sh` bọc ngoài, và PAGE CACHE của file.
+ * Đo thật thấy chênh 125 MB giữa hai con số (Railway 255, Node 130) mà không giải thích
+ * được từ bên trong, nên phải đọc thẳng chỗ Railway đọc.
+ *
+ * `anon` là bộ nhớ thật của các tiến trình, `file` là page cache — thứ hệ điều hành THU HỒI
+ * ĐƯỢC khi cần, nên nếu phần chênh nằm ở đây thì không phải rò và cũng không đáng lo.
+ */
+function docCgroup() {
+  const doc = (p: string) => fs.readFileSync(p, 'utf8');
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+  try {
+    // cgroup v2 trước, v1 để dự phòng.
+    let tong = 0;
+    let stat = '';
+    try {
+      tong = Number(doc('/sys/fs/cgroup/memory.current').trim());
+      stat = doc('/sys/fs/cgroup/memory.stat');
+    } catch {
+      tong = Number(doc('/sys/fs/cgroup/memory/memory.usage_in_bytes').trim());
+      stat = doc('/sys/fs/cgroup/memory/memory.stat');
+    }
+    const lay = (k: string) => {
+      const m = stat.match(new RegExp(`^(?:total_)?${k} (\\d+)`, 'm'));
+      return m ? Number(m[1]) : 0;
+    };
+    const file = lay('file') || lay('cache');
+    return {
+      tongMB: mb(tong),
+      anonMB: mb(lay('anon') || lay('rss')),
+      pageCacheMB: mb(file),
+      fileHoatDongMB: mb(lay('active_file')),
+      fileNgheMB: mb(lay('inactive_file')),
+    };
+  } catch (e: any) {
+    return { loi: e?.message || 'không đọc được cgroup' };
+  }
+}
+
 router.get('/suc-khoe/:groupID', async (req, res) => {
   const m = process.memoryUsage();
   const mb = (n: number) => Math.round(n / 1024 / 1024);
@@ -39,6 +82,7 @@ router.get('/suc-khoe/:groupID', async (req, res) => {
     ngoaiHeapMB: mb(m.external),
     tranHeapMB: Math.round(v8.getHeapStatistics().heap_size_limit / 1024 / 1024),
     chayDuocGiay: Math.round(process.uptime()),
+    container: docCgroup(),
     khoDiscord: kho,
   });
 });
